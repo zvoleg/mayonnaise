@@ -1,12 +1,19 @@
 macro_rules! op {
-    ($addr:ident, $instr:ident) => {
-        Op { a: &Emu6502::$addr, i: &Emu6502::$instr }
+    ($addr:ident, $instr:ident, $amount: expr) => {
+        Op { addressing_mode: &Emu6502::$addr, instruction: &Emu6502::$instr, cycle_amount: $amount }
     };
 }
 
-const OPCODES: [Op<'static>; 2] = [
-    op!(IMM, XEP), op!(IMM, XEP)
+struct Op<'a> {
+    addressing_mode: &'a dyn Fn(&mut Emu6502),
+    instruction: &'a dyn Fn(&mut Emu6502),
+    cycle_amount: u8
+}
+
+const OPCODES: [Op<'static>; 16] = [
+    op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0), op!(IMM, XEP, 0)
 ];
+
 
 pub struct Emu6502 {
     acc: u8,
@@ -25,10 +32,6 @@ pub struct Emu6502 {
     cycle_counter: u8,
 }
 
-struct Op<'a> {
-    a: &'a dyn Fn(&mut Emu6502),
-    i: &'a dyn Fn(&mut Emu6502),
-}
 
 #[allow(non_snake_case)]
 impl Emu6502 {
@@ -55,10 +58,10 @@ impl Emu6502 {
         if self.cycle_counter == 0 {
             self.opcode = Emu6502::read_data(self.prog_counter);
             self.prog_counter += 1;
-            let addressing = OPCODES[self.opcode as usize].a;
-            addressing(self);
-            let instruction = OPCODES[self.opcode as usize].i;
-            instruction(self);
+            let op = &OPCODES[self.opcode as usize];
+            (op.addressing_mode)(self);
+            (op.instruction)(self);
+            self.cycle_counter = op.cycle_amount;
         }
         self.cycle_counter -= 1;
     }
@@ -168,6 +171,6 @@ impl Emu6502 {
     // Instructions set
 
     fn XEP(&mut self) {
-        panic!("undefinded opcode: {}");
+        panic!("undefinded opcode: {}", self.opcode);
     }
 }

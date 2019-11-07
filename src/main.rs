@@ -1,6 +1,7 @@
 use emu::emu6502::Emu6502;
 
 fn main() {
-    let mut _emu6502 = Emu6502::new();
+    let mut emu6502 = Emu6502::new();
+    emu6502.clock();
     println!("Hello, world!");
 }
