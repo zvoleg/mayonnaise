@@ -1,5 +1,11 @@
+macro_rules! op {
+    ($addr:ident, $instr:ident) => {
+        Op { a: &Emu6502::$addr, i: &Emu6502::$instr }
+    };
+}
+
 const OPCODES: [Op<'static>; 2] = [
-    Op { a: &Emu6502::IMM, i: &Emu6502::XEP }, Op { a: &Emu6502::IMM, i: &Emu6502::XEP }
+    op!(IMM, XEP), op!(IMM, XEP)
 ];
 
 pub struct Emu6502 {
