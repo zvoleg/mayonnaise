@@ -10,7 +10,7 @@ struct Op<'a> {
     cycle_amount: u8
 }
 
-const OPCODES: [Op<'static>; 112] = [
+const OPCODES: [Op<'static>; 144] = [
     op!(0x00, IMP, BRK, 7), op!(0x01, IDX, ORA, 6), op!(0x02, IMM, XEP, 0), op!(0x03, IMM, XEP, 0), op!(0x04, IMM, XEP, 0), op!(0x05, ZP0, ORA, 3), op!(0x06, ZP0, ASL, 5), op!(0x07, IMM, XEP, 0), op!(0x08, IMP, PHP, 3), op!(0x09, IMM, ORA, 2), op!(0x0A, ACC, ASL, 2), op!(0x0B, IMM, XEP, 0), op!(0x0C, IMM, XEP, 0), op!(0x0D, ABS, ORA, 4), op!(0x0E, ABS, ASL, 6), op!(0x0F, IMM, XEP, 0),
     op!(0x10, REL, BPL, 2), op!(0x11, IDY, ORA, 5), op!(0x12, IMM, XEP, 0), op!(0x13, IMM, XEP, 0), op!(0x14, IMM, XEP, 0), op!(0x15, ZPX, ORA, 4), op!(0x16, ZPX, ASL, 6), op!(0x17, IMM, XEP, 0), op!(0x18, IMP, CLC, 2), op!(0x19, ABY, ORA, 4), op!(0x1A, IMM, XEP, 0), op!(0x1B, IMM, XEP, 0), op!(0x1C, IMM, XEP, 0), op!(0x1D, ABX, ORA, 4), op!(0x1E, ABX, ASL, 7), op!(0x1F, IMM, XEP, 0),
     op!(0x20, ABS, JSR, 6), op!(0x21, IDX, AND, 6), op!(0x22, IMM, XEP, 0), op!(0x23, IMM, XEP, 0), op!(0x24, ZP0, BIT, 3), op!(0x25, ZP0, AND, 3), op!(0x26, ZP0, ROL, 5), op!(0x27, IMM, XEP, 0), op!(0x28, IMP, PLP, 4), op!(0x29, IMM, AND, 2), op!(0x2A, ACC, ROL, 2), op!(0x2B, IMM, XEP, 0), op!(0x2C, ABS, BIT, 4), op!(0x2D, ABS, AND, 4), op!(0x2E, ABS, ROL, 6), op!(0x2F, IMM, XEP, 0),
@@ -18,8 +18,20 @@ const OPCODES: [Op<'static>; 112] = [
     op!(0x40, IMP, RTI, 6), op!(0x41, IDX, EOR, 6), op!(0x42, IMM, XEP, 0), op!(0x43, IMM, XEP, 0), op!(0x44, IMM, XEP, 0), op!(0x45, ZP0, EOR, 3), op!(0x46, ZP0, LSR, 5), op!(0x47, IMM, XEP, 0), op!(0x48, IMP, PHA, 3), op!(0x49, IMM, EOR, 2), op!(0x4A, ACC, LSR, 2), op!(0x4B, IMM, XEP, 0), op!(0x4C, ABS, JMP, 3), op!(0x4D, ABS, EOR, 4), op!(0x4E, ABS, LSR, 6), op!(0x4F, IMM, XEP, 0),
     op!(0x50, REL, BVC, 2), op!(0x51, IDY, EOR, 5), op!(0x52, IMM, XEP, 0), op!(0x53, IMM, XEP, 0), op!(0x54, IMM, XEP, 0), op!(0x55, ZPX, EOR, 4), op!(0x56, ZPX, LSR, 6), op!(0x57, IMM, XEP, 0), op!(0x58, IMP, CLI, 2), op!(0x59, ABY, EOR, 4), op!(0x5A, IMM, XEP, 0), op!(0x5B, IMM, XEP, 0), op!(0x5C, IMM, XEP, 0), op!(0x5D, ABX, EOR, 4), op!(0x5E, ABX, LSR, 7), op!(0x5F, IMM, XEP, 0),
     op!(0x60, IMP, RTS, 6), op!(0x61, IDX, ADC, 6), op!(0x62, IMM, XEP, 0), op!(0x63, IMM, XEP, 0), op!(0x64, IMM, XEP, 0), op!(0x65, ZP0, ADC, 3), op!(0x66, ZP0, ROR, 5), op!(0x67, IMM, XEP, 0), op!(0x68, IMP, PLA, 4), op!(0x69, IMM, ADC, 2), op!(0x6A, ACC, ROR, 2), op!(0x6B, IMM, XEP, 0), op!(0x6C, IND, JMP, 5), op!(0x6D, ABS, ADC, 4), op!(0x6E, ABS, ROR, 6), op!(0x6F, IMM, XEP, 0),
+    op!(0x70, REL, BVC, 2), op!(0x71, IDY, ADC, 5), op!(0x72, IMM, XEP, 0), op!(0x73, IMM, XEP, 0), op!(0x74, IMM, XEP, 0), op!(0x75, ZPX, ADC, 4), op!(0x76, ZPX, ROR, 6), op!(0x77, IMM, XEP, 0), op!(0x78, IMP, SEI, 2), op!(0x79, ABY, ADC, 4), op!(0x7A, IMM, XEP, 0), op!(0x7B, IMM, XEP, 0), op!(0x7C, IMM, XEP, 0), op!(0x7D, ABX, ADC, 4), op!(0x7E, ABX, ROR, 7), op!(0x7F, IMM, XEP, 0),
+    op!(0x80, IMM, XEP, 0), op!(0x81, IDX, STA, 6), op!(0x82, IMM, XEP, 0), op!(0x83, IMM, XEP, 0), op!(0x84, ZP0, STY, 3), op!(0x85, ZP0, STA, 3), op!(0x86, ZP0, STX, 3), op!(0x87, IMM, XEP, 0), op!(0x88, IMP, DEY, 2), op!(0x89, IMM, XEP, 0), op!(0x8A, IMM, TXA, 2), op!(0x8B, IMM, XEP, 0), op!(0x8C, ABS, STY, 4), op!(0x8D, ABS, STA, 4), op!(0x8E, ABS, STX, 4), op!(0x8F, IMM, XEP, 0),
 ];
 
+enum Flag {
+    C = 1 << 0,
+    Z = 1 << 1,
+    I = 1 << 2,
+    D = 1 << 3,
+    B = 1 << 4,
+    U = 1 << 5,
+    V = 1 << 6,
+    S = 1 << 7
+}
 
 pub struct Emu6502 {
     acc: u8,
@@ -70,6 +82,14 @@ impl Emu6502 {
             self.cycle_counter = op.cycle_amount;
         }
         self.cycle_counter -= 1;
+    }
+
+    fn set_flag(&mut self, flag: Flag, state: u8) {
+        match state {
+            0 => self.status &= flag as u8 ^ 0xFF,
+            1 => self.status |= flag as u8,
+            _ => panic!("try to set flag to wrong state: {:#010b} -> {}", flag as u8, state)
+        }
     }
 
     fn read_data(address: u16) -> u8 {
@@ -293,7 +313,13 @@ impl Emu6502 {
     }
 
     fn LDA(&mut self) {
-
+        self.acc = Emu6502::read_data(self.address);
+        if self.acc == 0x0000 {
+            self.set_flag(Flag::Z, 1);
+        }
+        if self.acc & (1 << 7) == (1 << 7) {
+            self.set_flag(Flag::S, 1)
+        }
     }
 
     fn LDX(&mut self) {
