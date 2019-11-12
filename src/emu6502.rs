@@ -53,7 +53,7 @@ pub struct Emu6502 {
     prog_counter: u16,
 
     address: u16,
-    addr_offset: i8,
+    addr_offset: u16,
     fetched_data: u8,
 
     opcode: u8,
@@ -115,6 +115,11 @@ impl Emu6502 {
 
     fn write_data(&self, address: u16, data: u8) {
         self.bus.borrow_mut().write_data(address, data);
+    }
+
+    fn fetch(&mut self) -> u8 {
+        self.fetched_data = self.read_data(self.address);
+        self.fetched_data
     }
 
     // Addressing modes
@@ -221,7 +226,11 @@ impl Emu6502 {
     fn REL(&mut self) {
         let offset = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        self.addr_offset = offset as i8;
+        if (offset & 0x80) == 0x80 {
+            self.addr_offset = 0xFF00 | offset as u16;
+        } else {
+            self.addr_offset = offset as u16;
+        }
     }
 
     // Instructions set
@@ -344,7 +353,7 @@ impl Emu6502 {
 
     fn LDA(&mut self) {
         self.cycle_counter += self.additional_cycles;
-        self.acc = self.read_data(self.address);
+        self.acc = self.fetch();
         if self.acc == 0x0000 {
             self.set_flag(Flag::Z, 1);
         }
