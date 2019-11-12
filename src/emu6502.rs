@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use super::bus::Bus;
+
 macro_rules! op {
     ($ind: literal, $addr:ident, $instr:ident, $amount: expr) => {
         Op { addressing_mode: &Emu6502::$addr, instruction: &Emu6502::$instr, cycle_amount: $amount }
@@ -55,12 +58,15 @@ pub struct Emu6502 {
 
     opcode: u8,
     cycle_counter: u8,
+    additional_cycles: u8,
+
+    bus: RefCell<Bus>
 }
 
 
 #[allow(non_snake_case)]
 impl Emu6502 {
-    pub fn new() -> Emu6502 {
+    pub fn new(bus: RefCell<Bus>) -> Emu6502 {
         Emu6502 {
             acc: 0,
             x: 0,
@@ -76,12 +82,16 @@ impl Emu6502 {
 
             opcode: 0,
             cycle_counter: 0,
+            additional_cycles: 0,
+
+            bus
         }
     }
 
     pub fn clock(&mut self) {
         if self.cycle_counter <= 0 {
-            self.opcode = Emu6502::read_data(self.prog_counter);
+            self.additional_cycles = 0;
+            self.opcode = self.read_data(self.prog_counter);
             self.prog_counter += 1;
             let op = &OPCODES[self.opcode as usize];
             (op.addressing_mode)(self);
@@ -99,8 +109,12 @@ impl Emu6502 {
         }
     }
 
-    fn read_data(address: u16) -> u8 {
-        0
+    fn read_data(&self, address: u16) -> u8 {
+        self.bus.borrow().read_data(address)
+    }
+
+    fn write_data(&self, address: u16, data: u8) {
+        self.bus.borrow_mut().write_data(address, data);
     }
 
     // Addressing modes
@@ -117,86 +131,95 @@ impl Emu6502 {
     fn IMP(&mut self) {}
 
     fn ABS(&mut self) {
-        let low = Emu6502::read_data(self.prog_counter);
+        let low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let high = Emu6502::read_data(self.prog_counter);
+        let high = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         self.address = ((high as u16) << 8) | low as u16;
     }
 
     fn ABX(&mut self) {
-        let low = Emu6502::read_data(self.prog_counter);
+        let low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let high = Emu6502::read_data(self.prog_counter);
+        let high = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let base_address = ((high as u16) << 8) | low as u16;
         let (result_address, _overflow) = base_address.overflowing_add(self.x as u16);
         self.address = result_address;
+        if (self.address & 0xFF00) != ((high as u16) << 8) {
+            self.additional_cycles = 1;
+        }
     }
 
     fn ABY(&mut self) {
-        let low = Emu6502::read_data(self.prog_counter);
+        let low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let high = Emu6502::read_data(self.prog_counter);
+        let high = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let base_address = ((high as u16) << 8) | low as u16;
         let (result_address, _overflow) = base_address.overflowing_add(self.y as u16);
         self.address = result_address;
+        if (self.address & 0xFF00) != ((high as u16) << 8) {
+            self.additional_cycles = 1;
+        }
     }
 
     fn ZP0(&mut self) {
-        let low = Emu6502::read_data(self.prog_counter);
+        let low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         self.address = low as u16;
     }
 
     fn ZPX(&mut self) {
-        let base_low = Emu6502::read_data(self.prog_counter);
+        let base_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let (low, _overflow) = base_low.overflowing_add(self.x);
         self.address = low as u16;
     }
 
     fn ZPY(&mut self) {
-        let base_low = Emu6502::read_data(self.prog_counter);
+        let base_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let (low, _overflow) = base_low.overflowing_add(self.y);
         self.address = low as u16;
     }
 
     fn IND(&mut self) {
-        let indirect_low = Emu6502::read_data(self.prog_counter);
+        let indirect_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let indirect_high = Emu6502::read_data(self.prog_counter);
+        let indirect_high = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let indirect_address = ((indirect_high as u16) << 8) | indirect_low as u16;
-        let low = Emu6502::read_data(indirect_address);
-        let high = Emu6502::read_data(indirect_address + 1);
+        let low = self.read_data(indirect_address);
+        let high = self.read_data(indirect_address + 1);
         self.address = ((high as u16) << 8) | low as u16;
     }
 
     fn IDX(&mut self) {
-        let base_low = Emu6502::read_data(self.prog_counter);
+        let base_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let (indirect_low, _overflow) = base_low.overflowing_add(self.x);
-        let low = Emu6502::read_data(indirect_low as u16);
+        let low = self.read_data(indirect_low as u16);
         let (indirect_high, _overflow) = indirect_low.overflowing_add(1);
-        let high = Emu6502::read_data(indirect_high as u16);
+        let high = self.read_data(indirect_high as u16);
         self.address = ((high as u16) << 8) | low as u16;
     }
 
     fn IDY(&mut self) {
-        let indirect_low = Emu6502::read_data(self.prog_counter);
+        let indirect_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let (next_byte, _overflow) = indirect_low.overflowing_add(1);
-        let indirect_high = Emu6502::read_data(next_byte as u16);
+        let indirect_high = self.read_data(next_byte as u16);
         let mut result_address = ((indirect_high as u16) << 8) | indirect_low as u16;
         result_address += self.y as u16;
         self.address = result_address;
+        if (self.address & 0xFF00) != ((indirect_high as u16) << 8) {
+            self.additional_cycles = 1;
+        }
     }
 
     fn REL(&mut self) {
-        let offset = Emu6502::read_data(self.prog_counter);
+        let offset = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         self.addr_offset = offset as i8;
     }
@@ -204,11 +227,11 @@ impl Emu6502 {
     // Instructions set
 
     fn ADC(&mut self) {
-
+        self.cycle_counter += self.additional_cycles;
     }
 
     fn AND(&mut self) {
-
+        self.cycle_counter += self.additional_cycles;
     }
 
     fn ASL(&mut self) {
@@ -272,7 +295,7 @@ impl Emu6502 {
     }
 
     fn CMP(&mut self) {
-
+        self.cycle_counter += self.additional_cycles;
     }
 
     fn CPX(&mut self) {
@@ -296,7 +319,7 @@ impl Emu6502 {
     }
 
     fn EOR(&mut self) {
-
+        self.cycle_counter += self.additional_cycles;
     }
 
     fn INC(&mut self) {
@@ -320,7 +343,8 @@ impl Emu6502 {
     }
 
     fn LDA(&mut self) {
-        self.acc = Emu6502::read_data(self.address);
+        self.cycle_counter += self.additional_cycles;
+        self.acc = self.read_data(self.address);
         if self.acc == 0x0000 {
             self.set_flag(Flag::Z, 1);
         }
@@ -330,11 +354,11 @@ impl Emu6502 {
     }
 
     fn LDX(&mut self) {
-
+        self.cycle_counter += self.additional_cycles;
     }
 
     fn LDY(&mut self) {
-
+        self.cycle_counter += self.additional_cycles;
     }
 
     fn LSR(&mut self) {
@@ -346,7 +370,7 @@ impl Emu6502 {
     }
 
     fn ORA(&mut self) {
-
+        self.cycle_counter += self.additional_cycles;
     }
 
     fn PHA(&mut self) {
@@ -382,7 +406,7 @@ impl Emu6502 {
     }
 
     fn SBC(&mut self) {
-
+        self.cycle_counter += self.additional_cycles;
     }
 
     fn SEC(&mut self) {
@@ -398,7 +422,7 @@ impl Emu6502 {
     }
 
     fn STA(&mut self) {
-
+        self.write_data(self.address, self.acc);
     }
 
     fn STX(&mut self) {
