@@ -103,10 +103,14 @@ impl Emu6502 {
 
     fn set_flag(&mut self, flag: Flag, state: u8) {
         match state {
-            0 => self.status &= flag as u8 ^ 0xFF,
+            0 => self.status &= !(flag as u8),
             1 => self.status |= flag as u8,
             _ => panic!("try to set flag to wrong state: {:#010b} -> {}", flag as u8, state)
         }
+    }
+
+    fn get_flag(&self, flag: Flag) -> u8 {
+        self.status & flag as u8
     }
 
     fn read_data(&self, address: u16) -> u8 {
@@ -357,7 +361,7 @@ impl Emu6502 {
         if self.acc == 0x0000 {
             self.set_flag(Flag::Z, 1);
         }
-        if self.acc & (1 << 7) == (1 << 7) {
+        if self.acc & (Flag::S as u8) == (Flag::S as u8) {
             self.set_flag(Flag::S, 1)
         }
     }
