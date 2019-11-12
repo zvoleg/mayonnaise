@@ -101,16 +101,18 @@ impl Emu6502 {
         self.cycle_counter -= 1;
     }
 
-    fn set_flag(&mut self, flag: Flag, state: u8) {
+    fn set_flag(&mut self, flag: Flag, state: bool) {
         match state {
-            0 => self.status &= !(flag as u8),
-            1 => self.status |= flag as u8,
-            _ => panic!("try to set flag to wrong state: {:#010b} -> {}", flag as u8, state)
+            false => self.status &= !(flag as u8),
+            true => self.status |= flag as u8,
         }
     }
 
     fn get_flag(&self, flag: Flag) -> u8 {
-        self.status & flag as u8
+        if (self.status & flag as u8) != 0 {
+            return 1;
+        }
+        0
     }
 
     fn read_data(&self, address: u16) -> u8 {
@@ -241,6 +243,12 @@ impl Emu6502 {
 
     fn ADC(&mut self) {
         self.cycle_counter += self.additional_cycles;
+        let (result, overflow) = self.acc.overflowing_add(self.fetch() + self.get_flag(Flag::C));
+        self.set_flag(Flag::C, overflow);
+        self.set_flag(Flag::V, overflow);
+        self.set_flag(Flag::S, (result & 1 << 7) == 0x80);
+        self.set_flag(Flag::Z, result == 0x0000);
+        self.acc = result;
     }
 
     fn AND(&mut self) {
@@ -358,12 +366,8 @@ impl Emu6502 {
     fn LDA(&mut self) {
         self.cycle_counter += self.additional_cycles;
         self.acc = self.fetch();
-        if self.acc == 0x0000 {
-            self.set_flag(Flag::Z, 1);
-        }
-        if self.acc & (Flag::S as u8) == (Flag::S as u8) {
-            self.set_flag(Flag::S, 1)
-        }
+        self.set_flag(Flag::Z, self.acc == 0x0000);
+        self.set_flag(Flag::S, self.acc & (1 << 7) == 0x80)
     }
 
     fn LDX(&mut self) {
@@ -420,6 +424,7 @@ impl Emu6502 {
 
     fn SBC(&mut self) {
         self.cycle_counter += self.additional_cycles;
+        let (result, overflow) = self.acc.overflowing_sub(self.fetch() - self.get_flag(Flag::C));
     }
 
     fn SEC(&mut self) {
