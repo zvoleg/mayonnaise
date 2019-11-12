@@ -33,14 +33,14 @@ const OPCODES: [Op<'static>; 256] = [
 ];
 
 enum Flag {
-    C = 1 << 0,
-    Z = 1 << 1,
-    I = 1 << 2,
-    D = 1 << 3,
-    B = 1 << 4,
-    U = 1 << 5,
-    V = 1 << 6,
-    S = 1 << 7
+    C = 1 << 0, // Cary
+    Z = 1 << 1, // Zero
+    I = 1 << 2, // Interrupt
+    D = 1 << 3, // Decimal
+    B = 1 << 4, // Break
+    U = 1 << 5, // Unused
+    V = 1 << 6, // Overflow
+    S = 1 << 7  // Sign
 }
 
 pub struct Emu6502 {
@@ -109,10 +109,10 @@ impl Emu6502 {
     }
 
     fn get_flag(&self, flag: Flag) -> u8 {
-        if (self.status & flag as u8) != 0 {
-            return 1;
+        match (self.status & flag as u8) != 0 {
+            true  => 1,
+            false => 0
         }
-        0
     }
 
     fn read_data(&self, address: u16) -> u8 {
@@ -241,18 +241,101 @@ impl Emu6502 {
 
     // Instructions set
 
-    fn ADC(&mut self) {
+    fn LDA(&mut self) { // load data to accumulator
+        self.cycle_counter += self.additional_cycles;
+        self.acc = self.fetch();
+        self.set_flag(Flag::Z, self.acc == 0x0000);
+        self.set_flag(Flag::S, self.acc & (1 << 7) != 0)
+    }
+
+    fn STA(&mut self) { // store accumulator to memory
+        self.write_data(self.address, self.acc);
+    }
+
+    fn ADC(&mut self) { // add with carry
         self.cycle_counter += self.additional_cycles;
         let (result, overflow) = self.acc.overflowing_add(self.fetch() + self.get_flag(Flag::C));
         self.set_flag(Flag::C, overflow);
         self.set_flag(Flag::V, overflow);
-        self.set_flag(Flag::S, (result & 1 << 7) == 0x80);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
         self.set_flag(Flag::Z, result == 0x0000);
+        self.acc = result;
+    }
+
+    fn SBC(&mut self) { // subtract with carry
+        self.cycle_counter += self.additional_cycles;
+        self.fetch();
+        let operand = !self.fetched_data + self.get_flag(Flag::C);
+        let (result, overflow) = self.acc.overflowing_add(operand);
+        self.set_flag(Flag::C, overflow);
+        self.set_flag(Flag::V, overflow);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::Z, result == 0);
         self.acc = result;
     }
 
     fn AND(&mut self) {
         self.cycle_counter += self.additional_cycles;
+        self.acc = self.acc & self.fetch();
+        self.set_flag(Flag::Z, self.acc == 0);
+        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+    }
+
+    fn ORA(&mut self) {
+        self.cycle_counter += self.additional_cycles;
+        self.acc = self.acc & self.fetch();
+        self.set_flag(Flag::Z, self.acc == 0);
+        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+    }
+
+    fn EOR(&mut self) {
+        self.cycle_counter += self.additional_cycles;
+        self.acc = self.acc ^ self.fetch();
+        self.set_flag(Flag::Z, self.acc == 0);
+        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+    }
+
+    fn SEC(&mut self) { // set carry flag
+        self.set_flag(Flag::C, true);
+    }
+
+    fn CLC(&mut self) { // reset carry flag
+        self.set_flag(Flag::C, false);
+    }
+
+    fn SEI(&mut self) { // set interrupt disable flag
+        self.set_flag(Flag::I, true);
+    }
+
+    fn CLI(&mut self) { // reset interrupt disable flag
+        self.set_flag(Flag::I, false);
+    }
+
+    fn SED(&mut self) { // set decimal mode
+        self.set_flag(Flag::D, true);
+    }
+
+    fn CLD(&mut self) { // reset decimal mode
+        self.set_flag(Flag::D, false);
+    }
+
+    fn CLV(&mut self) { // reset overflow flag
+        self.set_flag(Flag::V, false);
+    }
+
+    fn JMP(&mut self) {
+        self.prog_counter = self.address;
+    }
+
+    fn BMI(&mut self) { // branch if minus
+        if self.get_flag(Flag::S) == 1 {
+            self.cycle_counter += 1;
+            let (new_prog_counter, _overflow) = self.prog_counter.overflowing_add(self.addr_offset);
+            if (new_prog_counter & 0xFF00) != (self.prog_counter & 0xFF00) {
+                self.cycle_counter += 1;
+            }
+            self.prog_counter = new_prog_counter;
+        }
     }
 
     fn ASL(&mut self) {
@@ -275,10 +358,6 @@ impl Emu6502 {
 
     }
 
-    fn BMI(&mut self) {
-
-    }
-
     fn BNE(&mut self) {
 
     }
@@ -296,22 +375,6 @@ impl Emu6502 {
     }
 
     fn BVS(&mut self) {
-
-    }
-
-    fn CLC(&mut self) {
-
-    }
-
-    fn CLD(&mut self) {
-
-    }
-
-    fn CLI(&mut self) {
-
-    }
-
-    fn CLV(&mut self) {
 
     }
 
@@ -339,10 +402,6 @@ impl Emu6502 {
 
     }
 
-    fn EOR(&mut self) {
-        self.cycle_counter += self.additional_cycles;
-    }
-
     fn INC(&mut self) {
 
     }
@@ -355,19 +414,8 @@ impl Emu6502 {
 
     }
 
-    fn JMP(&mut self) {
-
-    }
-
     fn JSR(&mut self) {
 
-    }
-
-    fn LDA(&mut self) {
-        self.cycle_counter += self.additional_cycles;
-        self.acc = self.fetch();
-        self.set_flag(Flag::Z, self.acc == 0x0000);
-        self.set_flag(Flag::S, self.acc & (1 << 7) == 0x80)
     }
 
     fn LDX(&mut self) {
@@ -384,10 +432,6 @@ impl Emu6502 {
 
     fn NOP(&mut self) {
 
-    }
-
-    fn ORA(&mut self) {
-        self.cycle_counter += self.additional_cycles;
     }
 
     fn PHA(&mut self) {
@@ -420,27 +464,6 @@ impl Emu6502 {
 
     fn RTS(&mut self) {
 
-    }
-
-    fn SBC(&mut self) {
-        self.cycle_counter += self.additional_cycles;
-        let (result, overflow) = self.acc.overflowing_sub(self.fetch() - self.get_flag(Flag::C));
-    }
-
-    fn SEC(&mut self) {
-
-    }
-
-    fn SED(&mut self) {
-
-    }
-
-    fn SEI(&mut self) {
-
-    }
-
-    fn STA(&mut self) {
-        self.write_data(self.address, self.acc);
     }
 
     fn STX(&mut self) {
@@ -479,3 +502,29 @@ impl Emu6502 {
         panic!("undefinded opcode: {}", self.opcode);
     }
 }
+
+/*
+#[cfg(test)]
+mod test {
+    use std::cell::RefCell;
+    use crate::bus::Bus;
+    use crate::emu6502::{Emu6502, Flag};
+
+    #[test]
+    fn subtract() { // before testing comment self.fetch() in SBC function
+        let bus = RefCell::new(Bus::new());
+        let mut emu = Emu6502::new(bus);
+        emu.set_flag(Flag::C, true);
+        emu.acc = 5;
+        emu.fetched_data = 2;
+        emu.SBC();
+        assert_eq!(emu.acc, 3);
+        emu.fetched_data = 5;
+        emu.SBC();
+        assert_eq!(emu.acc, ((-2 as i8) as u8));
+        emu.fetched_data = 8;
+        emu.SBC();
+        assert_eq!(emu.acc, ((-10 as i8) as u8));
+    }
+}
+*/
