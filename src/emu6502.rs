@@ -128,6 +128,15 @@ impl Emu6502 {
         self.fetched_data
     }
 
+    fn branching_instruction(&mut self) {
+        self.cycle_counter += 1;
+        let (new_prog_counter, _overflow) = self.prog_counter.overflowing_add(self.addr_offset);
+        if (new_prog_counter & 0xFF00) != (self.prog_counter & 0xFF00) {
+            self.cycle_counter += 1;
+        }
+        self.prog_counter = new_prog_counter;
+    }
+
     // Addressing modes
 
     fn IMM(&mut self) {
@@ -274,21 +283,21 @@ impl Emu6502 {
         self.acc = result;
     }
 
-    fn AND(&mut self) {
+    fn AND(&mut self) { // bitwise and
         self.cycle_counter += self.additional_cycles;
         self.acc = self.acc & self.fetch();
         self.set_flag(Flag::Z, self.acc == 0);
         self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
     }
 
-    fn ORA(&mut self) {
+    fn ORA(&mut self) { // bitwise or
         self.cycle_counter += self.additional_cycles;
         self.acc = self.acc & self.fetch();
         self.set_flag(Flag::Z, self.acc == 0);
         self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
     }
 
-    fn EOR(&mut self) {
+    fn EOR(&mut self) { // bitwise xor
         self.cycle_counter += self.additional_cycles;
         self.acc = self.acc ^ self.fetch();
         self.set_flag(Flag::Z, self.acc == 0);
@@ -329,40 +338,163 @@ impl Emu6502 {
 
     fn BMI(&mut self) { // branch if minus
         if self.get_flag(Flag::S) == 1 {
-            self.cycle_counter += 1;
-            let (new_prog_counter, _overflow) = self.prog_counter.overflowing_add(self.addr_offset);
-            if (new_prog_counter & 0xFF00) != (self.prog_counter & 0xFF00) {
-                self.cycle_counter += 1;
-            }
-            self.prog_counter = new_prog_counter;
+            self.branching_instruction();
         }
     }
 
-    fn ASL(&mut self) {
-
+    fn BPL(&mut self) { // branch if plus
+        if self.get_flag(Flag::S) == 0 {
+            self.branching_instruction();
+        }
     }
 
-    fn BCC(&mut self) {
-
+    fn BCC(&mut self) { // branch if carry reset
+        if self.get_flag(Flag::C) == 0 {
+            self.branching_instruction();
+        }
     }
 
-    fn BCS(&mut self) {
-
+    fn BCS(&mut self) { // branch if carry set
+        if self.get_flag(Flag::C) == 1 {
+            self.branching_instruction();
+        }
     }
 
-    fn BEQ(&mut self) {
+    fn BEQ(&mut self) { // branch if zero
+        if self.get_flag(Flag::Z) == 1 {
+            self.branching_instruction();
+        }
+    }
 
+    fn BNE(&mut self) { // branch if not zero
+        if self.get_flag(Flag::Z) == 0 {
+            self.branching_instruction();
+        }
+    }
+
+    fn BVS(&mut self) { // branch if overflow set
+        if self.get_flag(Flag::V) == 1 {
+            self.branching_instruction();
+        }
+    }
+
+    fn BVC(&mut self) { // branch if overflow reset
+        if self.get_flag(Flag::V) == 0 {
+            self.branching_instruction();
+        }
+    }
+
+    fn CMP(&mut self) { // compare accumulator to memory
+        self.cycle_counter += self.additional_cycles;
+        self.fetch();
+        let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
+        let (result, _overflow) = self.acc.overflowing_add(invert_fetched_data);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.acc & 0x80));
     }
 
     fn BIT(&mut self) {
-
+        self.fetch();
+        let result = self.acc & self.fetched_data;
+        self.set_flag(Flag::S, self.fetched_data & (1 << 7) != 0);
+        self.set_flag(Flag::V, self.fetched_data & (1 << 6) != 0);
+        self.set_flag(Flag::Z, result == 0);
     }
 
-    fn BNE(&mut self) {
-
+    fn LDX(&mut self) { // load memory to x register
+        self.cycle_counter += self.additional_cycles;
+        self.x = self.fetch();
+        self.set_flag(Flag::Z, self.x == 0);
+        self.set_flag(Flag::S, self.x & (1 << 7) != 0);
     }
 
-    fn BPL(&mut self) {
+    fn LDY(&mut self) { // load memory to y register
+        self.cycle_counter += self.additional_cycles;
+        self.y = self.fetch();
+        self.set_flag(Flag::Z, self.y == 0);
+        self.set_flag(Flag::S, self.y & (1 << 7) != 0);
+    }
+
+    fn STX(&mut self) { // store x register to memory
+        self.write_data(self.address, self.x);
+    }
+
+    fn STY(&mut self) {  // store y register to memory
+        self.write_data(self.address, self.y);
+    }
+
+    fn INX(&mut self) { // increment x register
+        let (result, _overflow) = self.x.overflowing_add(1);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::Z, result == 0);
+        self.x = result;
+    }
+
+    fn INY(&mut self) { // increment y register
+        let (result, _overflow) = self.y.overflowing_add(1);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::Z, result == 0);
+        self.y = result;
+    }
+
+    fn DEX(&mut self) { // decrement x register
+        let (result, _overflow) = self.x.overflowing_sub(1);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::Z, result == 0);
+        self.x = result;
+    }
+
+    fn DEY(&mut self) { // decrement y register
+        let (result, _overflow) = self.y.overflowing_sub(1);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::Z, result == 0);
+        self.y = result;
+    }
+
+    fn CPX(&mut self) { // compare x to memory
+        self.fetch();
+        let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
+        let (result, _overflow) = self.x.overflowing_add(invert_fetched_data);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.x & 0x80));
+    }
+
+    fn CPY(&mut self) { // compare y to memory
+        self.fetch();
+        let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
+        let (result, _overflow) = self.y.overflowing_add(invert_fetched_data);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.y & 0x80));
+    }
+
+    fn TAX(&mut self) { // transfer accumulator to x
+        self.x = self.acc;
+        self.set_flag(Flag::S, self.x & (1 << 7) != 0);
+        self.set_flag(Flag::Z, self.x == 0);
+    }
+
+    fn TXA(&mut self) { // transfer x to accumulator
+        self.acc = self.x;
+        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::Z, self.acc == 0);
+    }
+
+    fn TAY(&mut self) { // transfer accumulator to y
+        self.y = self.acc;
+        self.set_flag(Flag::S, self.y & (1 << 7) != 0);
+        self.set_flag(Flag::Z, self.y == 0);
+    }
+
+    fn TYA(&mut self) { // transfer y to accumulator
+        self.acc = self.y;
+        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::Z, self.acc == 0);
+    }
+
+    fn ASL(&mut self) {
 
     }
 
@@ -370,35 +502,7 @@ impl Emu6502 {
 
     }
 
-    fn BVC(&mut self) {
-
-    }
-
-    fn BVS(&mut self) {
-
-    }
-
-    fn CMP(&mut self) {
-        self.cycle_counter += self.additional_cycles;
-    }
-
-    fn CPX(&mut self) {
-
-    }
-
-    fn CPY(&mut self) {
-
-    }
-
     fn DEC(&mut self) {
-
-    }
-
-    fn DEX(&mut self) {
-
-    }
-
-    fn DEY(&mut self) {
 
     }
 
@@ -406,24 +510,8 @@ impl Emu6502 {
 
     }
 
-    fn INX(&mut self) {
-
-    }
-
-    fn INY(&mut self) {
-
-    }
-
     fn JSR(&mut self) {
 
-    }
-
-    fn LDX(&mut self) {
-        self.cycle_counter += self.additional_cycles;
-    }
-
-    fn LDY(&mut self) {
-        self.cycle_counter += self.additional_cycles;
     }
 
     fn LSR(&mut self) {
@@ -466,35 +554,11 @@ impl Emu6502 {
 
     }
 
-    fn STX(&mut self) {
-
-    }
-
-    fn STY(&mut self) {
-
-    }
-
-    fn TAX(&mut self) {
-
-    }
-
-    fn TAY(&mut self) {
-
-    }
-
     fn TSX(&mut self) {
 
     }
 
-    fn TXA(&mut self) {
-
-    }
-
     fn TXS(&mut self) {
-
-    }
-
-    fn TYA(&mut self) {
 
     }
 
