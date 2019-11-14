@@ -266,7 +266,7 @@ impl Emu6502 {
         self.cycle_counter += self.additional_cycles;
         self.acc = self.fetch();
         self.set_flag(Flag::Z, self.acc == 0x0000);
-        self.set_flag(Flag::S, self.acc & (1 << 7) != 0)
+        self.set_flag(Flag::S, self.acc & 0x80 != 0)
     }
 
     fn STA(&mut self) { // store accumulator to memory
@@ -278,7 +278,7 @@ impl Emu6502 {
         let (result, overflow) = self.acc.overflowing_add(self.fetch() + self.get_flag(Flag::C));
         self.set_flag(Flag::C, overflow);
         self.set_flag(Flag::V, overflow);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0x0000);
         self.acc = result;
     }
@@ -290,7 +290,7 @@ impl Emu6502 {
         let (result, overflow) = self.acc.overflowing_add(operand);
         self.set_flag(Flag::C, overflow);
         self.set_flag(Flag::V, overflow);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0);
         self.acc = result;
     }
@@ -299,21 +299,21 @@ impl Emu6502 {
         self.cycle_counter += self.additional_cycles;
         self.acc = self.acc & self.fetch();
         self.set_flag(Flag::Z, self.acc == 0);
-        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.acc & 0x80 != 0);
     }
 
     fn ORA(&mut self) { // bitwise or
         self.cycle_counter += self.additional_cycles;
         self.acc = self.acc & self.fetch();
         self.set_flag(Flag::Z, self.acc == 0);
-        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.acc & 0x80 != 0);
     }
 
     fn EOR(&mut self) { // bitwise xor
         self.cycle_counter += self.additional_cycles;
         self.acc = self.acc ^ self.fetch();
         self.set_flag(Flag::Z, self.acc == 0);
-        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.acc & 0x80 != 0);
     }
 
     fn SEC(&mut self) { // set carry flag
@@ -402,14 +402,14 @@ impl Emu6502 {
         let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
         let (result, _overflow) = self.acc.overflowing_add(invert_fetched_data);
         self.set_flag(Flag::Z, result == 0);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.acc & 0x80));
     }
 
     fn BIT(&mut self) {
         self.fetch();
         let result = self.acc & self.fetched_data;
-        self.set_flag(Flag::S, self.fetched_data & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.fetched_data & 0x80 != 0);
         self.set_flag(Flag::V, self.fetched_data & (1 << 6) != 0);
         self.set_flag(Flag::Z, result == 0);
     }
@@ -418,14 +418,14 @@ impl Emu6502 {
         self.cycle_counter += self.additional_cycles;
         self.x = self.fetch();
         self.set_flag(Flag::Z, self.x == 0);
-        self.set_flag(Flag::S, self.x & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.x & 0x80 != 0);
     }
 
     fn LDY(&mut self) { // load memory to y register
         self.cycle_counter += self.additional_cycles;
         self.y = self.fetch();
         self.set_flag(Flag::Z, self.y == 0);
-        self.set_flag(Flag::S, self.y & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.y & 0x80 != 0);
     }
 
     fn STX(&mut self) { // store x register to memory
@@ -438,28 +438,28 @@ impl Emu6502 {
 
     fn INX(&mut self) { // increment x register
         let (result, _overflow) = self.x.overflowing_add(1);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0);
         self.x = result;
     }
 
     fn INY(&mut self) { // increment y register
         let (result, _overflow) = self.y.overflowing_add(1);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0);
         self.y = result;
     }
 
     fn DEX(&mut self) { // decrement x register
         let (result, _overflow) = self.x.overflowing_sub(1);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0);
         self.x = result;
     }
 
     fn DEY(&mut self) { // decrement y register
         let (result, _overflow) = self.y.overflowing_sub(1);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0);
         self.y = result;
     }
@@ -469,7 +469,7 @@ impl Emu6502 {
         let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
         let (result, _overflow) = self.x.overflowing_add(invert_fetched_data);
         self.set_flag(Flag::Z, result == 0);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.x & 0x80));
     }
 
@@ -478,31 +478,31 @@ impl Emu6502 {
         let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
         let (result, _overflow) = self.y.overflowing_add(invert_fetched_data);
         self.set_flag(Flag::Z, result == 0);
-        self.set_flag(Flag::S, result & (1 << 7) != 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.y & 0x80));
     }
 
     fn TAX(&mut self) { // transfer accumulator to x
         self.x = self.acc;
-        self.set_flag(Flag::S, self.x & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.x & 0x80 != 0);
         self.set_flag(Flag::Z, self.x == 0);
     }
 
     fn TXA(&mut self) { // transfer x to accumulator
         self.acc = self.x;
-        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.acc & 0x80 != 0);
         self.set_flag(Flag::Z, self.acc == 0);
     }
 
     fn TAY(&mut self) { // transfer accumulator to y
         self.y = self.acc;
-        self.set_flag(Flag::S, self.y & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.y & 0x80 != 0);
         self.set_flag(Flag::Z, self.y == 0);
     }
 
     fn TYA(&mut self) { // transfer y to accumulator
         self.acc = self.y;
-        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.acc & 0x80 != 0);
         self.set_flag(Flag::Z, self.acc == 0);
     }
 
@@ -528,11 +528,59 @@ impl Emu6502 {
 
     fn PLA(&mut self) { // pop accumulator from stack
         self.acc = self.pop_from_stack();
-        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::S, self.acc & 0x80 != 0);
         self.set_flag(Flag::Z, self.acc == 0);
     }
 
-    fn ASL(&mut self) {
+    fn TXS(&mut self) { // transfer x register to stack pointer
+        self.stack_ptr = self.x;
+    }
+
+    fn TSX(&mut self) { // transfer stack pointer to x register
+        self.x = self.stack_ptr;
+        self.set_flag(Flag::S, self.x & 0x80 != 0);
+        self.set_flag(Flag::Z, self.x == 0);
+    }
+
+    fn PHP(&mut self) { // push status register to stack
+        self.push_to_stack(self.status);
+    }
+
+    fn PLP(&mut self) { // pop status register from stack
+        self.status = self.pop_from_stack();
+    }
+
+    fn LSR(&mut self) { // logical shift right
+        self.fetch();
+        let poped_bit = self.fetched_data & 0x01;
+        let result = self.fetched_data >> 1;
+        match self.opcode {
+            0x4A => self.acc = result,
+               _ => self.write_data(self.adress, result),
+        };
+        self.set_flag(Flag::C, poped_bit == 1);
+        self.set_flag(Flag::S, false);
+        self.set_flag(Flag::Z, result == 0);
+    }
+
+    fn ASL(&mut self) { // arithmetic shift left
+        self.fetch();
+        let poped_bit = (self.fetched_data & 0x80) >> 7;
+        let result = self.fetched_data << 1;
+        match self.opcode {
+            0x0A => self.acc = result,
+               _ => self.write_data(self.address, result),
+        };
+        self.set_flag(Flag::C, poped_bit == 1);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, result & 0x80 != 0);
+    }
+
+    fn ROL(&mut self) { // rotate left
+        
+    }
+
+    fn ROR(&mut self) { // rotate right
 
     }
 
@@ -548,39 +596,11 @@ impl Emu6502 {
 
     }
 
-    fn LSR(&mut self) {
-
-    }
-
     fn NOP(&mut self) {
 
     }
 
-    fn PHP(&mut self) {
-
-    }
-
-    fn PLP(&mut self) {
-
-    }
-
-    fn ROL(&mut self) {
-
-    }
-
-    fn ROR(&mut self) {
-
-    }
-
     fn RTI(&mut self) {
-
-    }
-
-    fn TSX(&mut self) {
-
-    }
-
-    fn TXS(&mut self) {
 
     }
 
