@@ -73,7 +73,7 @@ impl Emu6502 {
             y: 0,
 
             status: 32,
-            stack_ptr: 0,
+            stack_ptr: 0xFF,
             prog_counter: 0,
 
             address: 0,
@@ -113,6 +113,18 @@ impl Emu6502 {
             true  => 1,
             false => 0
         }
+    }
+
+    fn push_to_stack(&mut self, data: u8) {
+        let stack_address = 0x0100 | self.stack_ptr as u16;
+        self.write_data(stack_address, data);
+        self.stack_ptr -= 1;
+    }
+
+    fn pop_from_stack(&mut self) -> u8 {
+        self.stack_ptr += 1;
+        let stack_address = 0x0100 | self.stack_ptr as u16;
+        self.read_data(stack_address)
     }
 
     fn read_data(&self, address: u16) -> u8 {
@@ -494,6 +506,32 @@ impl Emu6502 {
         self.set_flag(Flag::Z, self.acc == 0);
     }
 
+    fn JSR(&mut self) { // jump to subroutine
+        self.prog_counter -= 1;
+        let low = self.prog_counter as u8;
+        let high = (self.prog_counter >> 8) as u8;
+        self.push_to_stack(high);
+        self.push_to_stack(low);
+        self.prog_counter = self.address;
+    }
+
+    fn RTS(&mut self) { // return from subroutin
+        let low = self.pop_from_stack();
+        let high = self.pop_from_stack();
+        self.prog_counter = ((high as u16) << 8) | low as u16;
+        self.prog_counter += 1;
+    }
+
+    fn PHA(&mut self) { // push accumulator on stack
+        self.push_to_stack(self.acc);
+    }
+
+    fn PLA(&mut self) { // pop accumulator from stack
+        self.acc = self.pop_from_stack();
+        self.set_flag(Flag::S, self.acc & (1 << 7) != 0);
+        self.set_flag(Flag::Z, self.acc == 0);
+    }
+
     fn ASL(&mut self) {
 
     }
@@ -510,10 +548,6 @@ impl Emu6502 {
 
     }
 
-    fn JSR(&mut self) {
-
-    }
-
     fn LSR(&mut self) {
 
     }
@@ -522,15 +556,7 @@ impl Emu6502 {
 
     }
 
-    fn PHA(&mut self) {
-
-    }
-
     fn PHP(&mut self) {
-
-    }
-
-    fn PLA(&mut self) {
 
     }
 
@@ -547,10 +573,6 @@ impl Emu6502 {
     }
 
     fn RTI(&mut self) {
-
-    }
-
-    fn RTS(&mut self) {
 
     }
 
