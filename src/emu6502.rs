@@ -556,7 +556,7 @@ impl Emu6502 {
         let result = self.fetched_data >> 1;
         match self.opcode {
             0x4A => self.acc = result,
-               _ => self.write_data(self.adress, result),
+               _ => self.write_data(self.address, result),
         };
         self.set_flag(Flag::C, poped_bit == 1);
         self.set_flag(Flag::S, false);
@@ -577,10 +577,48 @@ impl Emu6502 {
     }
 
     fn ROL(&mut self) { // rotate left
-        
+        self.fetch();
+        let poped_bit = (self.fetched_data & 0x80) >> 7;
+        let carry_value = self.get_flag(Flag::C);
+        let result = (self.fetched_data << 1) | carry_value;
+        match self.opcode {
+            0x6A => self.acc = result,
+               _ => self.write_data(self.address, result),
+        };
+        self.set_flag(Flag::C, poped_bit == 1);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, (result & 0x80) == 0);
     }
 
     fn ROR(&mut self) { // rotate right
+        self.fetch();
+        let poped_bit = self.fetched_data & 1;
+        let carry_value = self.get_flag(Flag::C);
+        let result = (self.fetched_data >> 1) | (carry_value << 7);
+        match self.opcode {
+            0x2A => self.acc = result,
+               _ => self.write_data(self.address, result),
+        };
+        self.set_flag(Flag::C, poped_bit == 1);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, (result & 0x80) == 0);
+    }
+
+    fn INC(&mut self) { // increment memory by one
+        let (result, _overflow) = self.fetch().overflowing_add(1);
+        self.write_data(self.address, result);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, (result & 0x80) != 0);
+    }
+
+    fn DEC(&mut self) { // decrement memory by one
+        let (result, _overflow) = self.fetch().overflowing_sub(1);
+        self.write_data(self.address, result);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, (result & 0x80) != 0);
+    }
+
+    fn RTI(&mut self) {
 
     }
 
@@ -588,19 +626,7 @@ impl Emu6502 {
 
     }
 
-    fn DEC(&mut self) {
-
-    }
-
-    fn INC(&mut self) {
-
-    }
-
     fn NOP(&mut self) {
-
-    }
-
-    fn RTI(&mut self) {
 
     }
 
