@@ -60,13 +60,20 @@ pub struct Emu6502 {
     cycle_counter: u8,
     additional_cycles: u8,
 
-    bus: RefCell<Bus>
+    acc_ptr: usize, // pointer to ACC function in OPCODES,
+    imp_ptr: usize, // pointer to IMP function in OPCODES
+
+    bus: RefCell<Bus>,
 }
 
 
 #[allow(non_snake_case)]
 impl Emu6502 {
     pub fn new(bus: RefCell<Bus>) -> Emu6502 {
+        let op = &OPCODES[0x0A];
+        let op1 = &OPCODES[0x00];
+        let acc_ptr = (op.addressing_mode as *const dyn Fn(&mut Emu6502)) as *const fn(&mut Emu6502) as usize;
+        let imp_ptr = (op1.addressing_mode as *const dyn Fn(&mut Emu6502)) as *const fn(&mut Emu6502) as usize;
         Emu6502 {
             acc: 0,
             x: 0,
@@ -84,7 +91,9 @@ impl Emu6502 {
             cycle_counter: 0,
             additional_cycles: 0,
 
-            bus
+            acc_ptr,
+            imp_ptr,
+            bus,
         }
     }
 
@@ -99,6 +108,34 @@ impl Emu6502 {
             self.cycle_counter = op.cycle_amount;
         }
         self.cycle_counter -= 1;
+    }
+
+    pub fn irq(&mut self) {
+        let low = self.prog_counter as u8;
+        let high = (self.prog_counter >> 8) as u8;
+        self.push_to_stack(high);
+        self.push_to_stack(low);
+        self.push_to_stack(self.status);
+        let new_low = self.read_data(0xFFFE);
+        let new_high = self.read_data(0xFFFF);
+        self.prog_counter = ((new_high as u16) << 8) | new_low as u16;
+    }
+
+    pub fn nmi(&mut self) { // non-maskable interrupt
+        let low = self.prog_counter as u8;
+        let high = (self.prog_counter >> 8) as u8;
+        self.push_to_stack(high);
+        self.push_to_stack(low);
+        self.push_to_stack(self.status);
+        let new_low = self.read_data(0xFFFA);
+        let new_high = self.read_data(0xFFFB);
+        self.prog_counter = ((new_high as u16) << 8) | new_low as u16;
+    }
+
+    pub fn reset(&mut self) {
+        let low = self.read_data(0xFFFC);
+        let high = self.read_data(0xFFFD);
+        self.prog_counter = ((high as u16) << 8) | low as u16;
     }
 
     fn set_flag(&mut self, flag: Flag, state: bool) {
@@ -117,7 +154,7 @@ impl Emu6502 {
 
     fn push_to_stack(&mut self, data: u8) {
         let stack_address = 0x0100 | self.stack_ptr as u16;
-        self.write_data(stack_address, data);
+        self.bus.borrow_mut().write_cpu_ram(stack_address, data);
         self.stack_ptr -= 1;
     }
 
@@ -128,15 +165,21 @@ impl Emu6502 {
     }
 
     fn read_data(&self, address: u16) -> u8 {
-        self.bus.borrow().read_data(address)
+        self.bus.borrow().read_cpu_ram(address)
     }
 
-    fn write_data(&self, address: u16, data: u8) {
-        self.bus.borrow_mut().write_data(address, data);
+    fn write_data(&self, data: u8) {
+        self.bus.borrow_mut().write_cpu_ram(self.address, data);
     }
 
     fn fetch(&mut self) -> u8 {
-        self.fetched_data = self.read_data(self.address);
+        let addressing_mode_ptr = &OPCODES[0x2A].addressing_mode
+            as *const dyn Fn(&mut Emu6502)
+            as *const fn(&mut Emu6502)
+            as usize;
+        if addressing_mode_ptr != self.acc_ptr && addressing_mode_ptr != self.imp_ptr {
+            self.fetched_data = self.read_data(self.address);
+        }
         self.fetched_data
     }
 
@@ -270,7 +313,7 @@ impl Emu6502 {
     }
 
     fn STA(&mut self) { // store accumulator to memory
-        self.write_data(self.address, self.acc);
+        self.write_data(self.acc);
     }
 
     fn ADC(&mut self) { // add with carry
@@ -429,11 +472,11 @@ impl Emu6502 {
     }
 
     fn STX(&mut self) { // store x register to memory
-        self.write_data(self.address, self.x);
+        self.write_data(self.x);
     }
 
     fn STY(&mut self) {  // store y register to memory
-        self.write_data(self.address, self.y);
+        self.write_data(self.y);
     }
 
     fn INX(&mut self) { // increment x register
@@ -556,7 +599,7 @@ impl Emu6502 {
         let result = self.fetched_data >> 1;
         match self.opcode {
             0x4A => self.acc = result,
-               _ => self.write_data(self.address, result),
+            _ => self.write_data(result),
         };
         self.set_flag(Flag::C, poped_bit == 1);
         self.set_flag(Flag::S, false);
@@ -569,7 +612,7 @@ impl Emu6502 {
         let result = self.fetched_data << 1;
         match self.opcode {
             0x0A => self.acc = result,
-               _ => self.write_data(self.address, result),
+            _ => self.write_data(result),
         };
         self.set_flag(Flag::C, poped_bit == 1);
         self.set_flag(Flag::Z, result == 0);
@@ -583,7 +626,7 @@ impl Emu6502 {
         let result = (self.fetched_data << 1) | carry_value;
         match self.opcode {
             0x6A => self.acc = result,
-               _ => self.write_data(self.address, result),
+            _ => self.write_data(result),
         };
         self.set_flag(Flag::C, poped_bit == 1);
         self.set_flag(Flag::Z, result == 0);
@@ -597,7 +640,7 @@ impl Emu6502 {
         let result = (self.fetched_data >> 1) | (carry_value << 7);
         match self.opcode {
             0x2A => self.acc = result,
-               _ => self.write_data(self.address, result),
+            _ => self.write_data(result),
         };
         self.set_flag(Flag::C, poped_bit == 1);
         self.set_flag(Flag::Z, result == 0);
@@ -606,29 +649,37 @@ impl Emu6502 {
 
     fn INC(&mut self) { // increment memory by one
         let (result, _overflow) = self.fetch().overflowing_add(1);
-        self.write_data(self.address, result);
+        self.write_data(result);
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, (result & 0x80) != 0);
     }
 
     fn DEC(&mut self) { // decrement memory by one
         let (result, _overflow) = self.fetch().overflowing_sub(1);
-        self.write_data(self.address, result);
+        self.write_data(result);
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, (result & 0x80) != 0);
     }
 
-    fn RTI(&mut self) {
-
+    fn RTI(&mut self) { // return from interrupt
+        self.status = self.pop_from_stack();
+        let low = self.pop_from_stack();
+        let high = self.pop_from_stack();
+        self.prog_counter = ((high as u16) << 8) | low as u16;
     }
 
-    fn BRK(&mut self) {
-
+    fn BRK(&mut self) { // break
+        let low = self.prog_counter as u8;
+        let high = (self.prog_counter >> 8) as u8;
+        self.push_to_stack(high);
+        self.push_to_stack(low);
+        self.push_to_stack(self.status);
+        let new_low = self.read_data(0xFFFE);
+        let new_high = self.read_data(0xFFFF);
+        self.prog_counter = ((new_high as u16) << 8) | new_low as u16;
     }
 
-    fn NOP(&mut self) {
-
-    }
+    fn NOP(&mut self) {}
 
     fn XEP(&mut self) {
         panic!("undefinded opcode: {}", self.opcode);
