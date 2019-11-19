@@ -60,9 +60,6 @@ pub struct Emu6502 {
     cycle_counter: u8,
     additional_cycles: u8,
 
-    acc_ptr: usize, // pointer to ACC function in OPCODES,
-    imp_ptr: usize, // pointer to IMP function in OPCODES
-
     bus: RefCell<Bus>,
 }
 
@@ -70,10 +67,6 @@ pub struct Emu6502 {
 #[allow(non_snake_case)]
 impl Emu6502 {
     pub fn new(bus: RefCell<Bus>) -> Emu6502 {
-        let op = &OPCODES[0x0A];
-        let op1 = &OPCODES[0x00];
-        let acc_ptr = (op.addressing_mode as *const dyn Fn(&mut Emu6502)) as *const fn(&mut Emu6502) as usize;
-        let imp_ptr = (op1.addressing_mode as *const dyn Fn(&mut Emu6502)) as *const fn(&mut Emu6502) as usize;
         Emu6502 {
             acc: 0,
             x: 0,
@@ -91,8 +84,6 @@ impl Emu6502 {
             cycle_counter: 0,
             additional_cycles: 0,
 
-            acc_ptr,
-            imp_ptr,
             bus,
         }
     }
@@ -173,11 +164,10 @@ impl Emu6502 {
     }
 
     fn fetch(&mut self) -> u8 {
-        let addressing_mode_ptr = &OPCODES[0x2A].addressing_mode
-            as *const dyn Fn(&mut Emu6502)
-            as *const fn(&mut Emu6502)
-            as usize;
-        if addressing_mode_ptr != self.acc_ptr && addressing_mode_ptr != self.imp_ptr {
+        let acc_ptr = &OPCODES[0x0A].addressing_mode;
+        let imp_ptr = &OPCODES[0x00].addressing_mode;
+        let addressing_mode_ptr = &OPCODES[self.opcode as usize].addressing_mode;
+        if !std::ptr::eq(addressing_mode_ptr, acc_ptr) && !std::ptr::eq(addressing_mode_ptr, imp_ptr) {
             self.fetched_data = self.read_data(self.address);
         }
         self.fetched_data
@@ -686,13 +676,27 @@ impl Emu6502 {
     }
 }
 
-/*
+
 #[cfg(test)]
 mod test {
     use std::cell::RefCell;
     use crate::bus::Bus;
-    use crate::emu6502::{Emu6502, Flag};
+    use crate::emu6502::{Emu6502, Flag, OPCODES};
 
+    #[test]
+    fn pointers() {
+        let op_acc = &OPCODES[0x0A];
+        let op_acc1 = &OPCODES[0x2A];
+        let op_imp = &OPCODES[0x00];
+
+        let acc  = op_acc.addressing_mode;
+        let acc1 = op_acc1.addressing_mode;
+        let imp  = op_imp.addressing_mode;
+
+        assert!(std::ptr::eq(acc, acc1));
+        assert!(!std::ptr::eq(acc, imp));
+    }
+    /*
     #[test]
     fn subtract() { // before testing comment self.fetch() in SBC function
         let bus = RefCell::new(Bus::new());
@@ -709,5 +713,6 @@ mod test {
         emu.SBC();
         assert_eq!(emu.acc, ((-10 as i8) as u8));
     }
+    */
 }
-*/
+
