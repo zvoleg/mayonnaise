@@ -35,7 +35,7 @@ impl Bus {
         } else if address >= 0x2000 && address <= 0x3FFF {
             self.ppuRegister[(address & 0x0007) as usize] = data;
         } else if address >= 0x4020 && address <= 0xFFFF {
-            // cartrige space maybe need access to mapper
+            // cartrige space, maybe need access to mapper
         }
     }
 }

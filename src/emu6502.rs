@@ -131,8 +131,8 @@ impl Emu6502 {
 
     fn set_flag(&mut self, flag: Flag, state: bool) {
         match state {
+            true  => self.status |= flag as u8,
             false => self.status &= !(flag as u8),
-            true => self.status |= flag as u8,
         }
     }
 
@@ -715,4 +715,3 @@ mod test {
     }
     */
 }
-
