@@ -11,3 +11,4 @@ name = "emu"
 path = "src/lib.rs"
 
 [dependencies]
+sdl2 = "0.32.2"

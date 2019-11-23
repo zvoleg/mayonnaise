@@ -2,6 +2,7 @@ use std::cell::RefCell;
 
 use emu::emu6502::Emu6502;
 use emu::bus::Bus;
+use emu::program::Cartridge;
 
 fn main() {
     let mut bus = Bus::new();
@@ -11,4 +12,5 @@ fn main() {
     let i: u8 = 1 << 7;
     println!("{:#010b}", i);
     println!("Hello, world!");
+    let mut cart = Cartridge::new("Test.nes");
 }
