@@ -102,14 +102,7 @@ impl Emu6502 {
     }
 
     pub fn irq(&mut self) {
-        let low = self.prog_counter as u8;
-        let high = (self.prog_counter >> 8) as u8;
-        self.push_to_stack(high);
-        self.push_to_stack(low);
-        self.push_to_stack(self.status);
-        let new_low = self.read_data(0xFFFE);
-        let new_high = self.read_data(0xFFFF);
-        self.prog_counter = ((new_high as u16) << 8) | new_low as u16;
+        self.BRK();
     }
 
     pub fn nmi(&mut self) { // non-maskable interrupt
