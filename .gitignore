@@ -1,0 +1,6 @@
+Cargo.lock
+.idea/
+target/
+SDL2.dll
+*.nes
+nes/

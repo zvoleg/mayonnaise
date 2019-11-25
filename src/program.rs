@@ -33,9 +33,9 @@ impl Cartridge {
 
         let mut prg_rom: Vec<u8> = vec![0; (16384 * size_prg as u16) as usize];
         let mut chr_rom: Vec<u8> = vec![0; (8192 * size_chr as u16) as usize];
-        prg_rom.clone_from_slice(&memory[idx..idx + (16384 * size_prg as u16) as usize]);
+        prg_rom.clone_from_slice(&memory[idx..idx + (16384 * size_prg as usize)]);
         idx += (16384 * size_prg as u16) as usize;
-        chr_rom.clone_from_slice(&memory[idx..idx + (8192 * size_chr as u16) as usize]);
+        chr_rom.clone_from_slice(&memory[idx..idx + (8192 * size_chr as usize)]);
 
         Cartridge {
             prg_rom,

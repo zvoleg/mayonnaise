@@ -67,8 +67,8 @@ pub struct Emu6502 {
 
 #[allow(non_snake_case)]
 impl Emu6502 {
-    pub fn new(bus: Rc<RefCell<Bus>>) -> Emu6502 {
-        Emu6502 {
+    pub fn init(bus: Rc<RefCell<Bus>>) -> Rc<RefCell<Emu6502>> {
+        let cpu = Emu6502 {
             acc: 0,
             x: 0,
             y: 0,
@@ -85,8 +85,11 @@ impl Emu6502 {
             cycle_counter: 0,
             additional_cycles: 0,
 
-            bus,
-        }
+            bus: bus.clone(),
+        };
+        let ref_cpu = Rc::new(RefCell::new(cpu));
+        (*bus).borrow_mut().set_cpu(ref_cpu.clone());
+        ref_cpu
     }
 
     pub fn clock(&mut self) {
@@ -673,9 +676,7 @@ impl Emu6502 {
 
 #[cfg(test)]
 mod test {
-    use std::cell::RefCell;
-    use crate::bus::Bus;
-    use crate::emu6502::{Emu6502, Flag, OPCODES};
+    use crate::emu6502::{OPCODES};
 
     #[test]
     fn pointers() {

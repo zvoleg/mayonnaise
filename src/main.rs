@@ -16,14 +16,11 @@ fn main() {
     let mut screen = Screen::new();
 
     let bus = Rc::new(RefCell::new(Bus::new()));
-    let mut emu6502 = Emu6502::new(Rc::clone(&bus));
-    let cart = Cartridge::new("Donkey_Kong.nes");
-    (*bus).borrow_mut().set_cpu(Box::new(emu6502));
-    (*bus).borrow_mut().insert_cartridge(Box::new(cart));
-
-    let i: u8 = 1 << 7;
-    println!("{:#010b}", i);
-    println!("Hello, world!");
+    Emu6502::init(Rc::clone(&bus));
+    let cart = Cartridge::new("Test.nes");
+    (*bus).borrow_mut().insert_cartridge(Rc::new(RefCell::new(cart)));
+    
+    (*bus).borrow_mut().clock();
 
     let mut event_pump = screen.get_events();
     'lock: loop {
