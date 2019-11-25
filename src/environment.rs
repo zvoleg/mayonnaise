@@ -4,7 +4,6 @@ use sdl2::Sdl;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 use sdl2::EventPump;
-use self::sdl2::pixels::Color;
 
 pub struct Screen {
     sdl: Sdl,
@@ -24,20 +23,5 @@ impl Screen {
 
     pub fn get_events(&mut self) -> EventPump {
         self.sdl.event_pump().unwrap()
-    }
-
-    pub fn print_text(&mut self) {
-        let ttf_context = self::sdl2::ttf::init().unwrap();
-        let mut font = ttf_context.load_font("recources/fonts/ka1.ttf", 14).unwrap();
-        let surface = font.render("Hello world").blended(Color::RGB(255, 255, 255)).unwrap();
-        let texture_creator = self.canvas.texture_creator();
-        let texture = texture_creator.create_texture_from_surface(&surface).unwrap();
-        self.canvas.set_draw_color(Color::RGB(0, 0, 0));
-        self.canvas.clear();
-
-        self.canvas.copy(&texture,None,None).unwrap();
-        self.canvas.present();
-
-
     }
 }
