@@ -10,7 +10,5 @@ edition = "2018"
 name = "emu"
 path = "src/lib.rs"
 
-[dependencies.sdl2]
-version = "0.32.2"
-default-features = false
-features = ["ttf"]
+[dependencies]
+sdl2 = "0.32.2"

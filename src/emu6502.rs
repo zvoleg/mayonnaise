@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::cell::RefCell;
 use super::bus::Bus;
 
@@ -60,13 +61,13 @@ pub struct Emu6502 {
     cycle_counter: u8,
     additional_cycles: u8,
 
-    bus: RefCell<Bus>,
+    bus: Rc<RefCell<Bus>>,
 }
 
 
 #[allow(non_snake_case)]
 impl Emu6502 {
-    pub fn new(bus: RefCell<Bus>) -> Emu6502 {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> Emu6502 {
         Emu6502 {
             acc: 0,
             x: 0,
