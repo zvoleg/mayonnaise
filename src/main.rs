@@ -49,10 +49,19 @@ fn main() {
     'lock: loop {
         for event in event_pump.poll_iter() {
             match event {
-                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => break 'lock,
+                Event::KeyDown { keycode, .. } => {
+                    if keycode.unwrap() == Keycode::Escape {
+                        break 'lock;
+                    }
+                    if keycode.unwrap() == Keycode::C {
+                        device.clock();
+                    }
+                    if keycode.unwrap() == Keycode::M {
+                        // print memory dump
+                    }
+                },
                 _ => ()
             }
         }
-        device.clock();
     }
 }
