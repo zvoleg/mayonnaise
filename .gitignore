@@ -4,3 +4,4 @@ target/
 SDL2.dll
 *.nes
 nes/
+docs/

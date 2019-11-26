@@ -67,8 +67,8 @@ pub struct Emu6502 {
 
 #[allow(non_snake_case)]
 impl Emu6502 {
-    pub fn init(bus: Rc<RefCell<Bus>>) -> Rc<RefCell<Emu6502>> {
-        let cpu = Emu6502 {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> Emu6502 {
+        Emu6502 {
             acc: 0,
             x: 0,
             y: 0,
@@ -86,14 +86,11 @@ impl Emu6502 {
             additional_cycles: 0,
 
             bus: bus.clone(),
-        };
-        let ref_cpu = Rc::new(RefCell::new(cpu));
-        (*bus).borrow_mut().set_cpu(ref_cpu.clone());
-        ref_cpu
+        }
     }
 
     pub fn clock(&mut self) {
-        if self.cycle_counter <= 0 {
+        if self.cycle_counter == 0 {
             self.additional_cycles = 0;
             self.opcode = self.read_data(self.prog_counter);
             self.prog_counter += 1;
@@ -101,8 +98,10 @@ impl Emu6502 {
             (op.addressing_mode)(self);
             (op.instruction)(self);
             self.cycle_counter = op.cycle_amount;
+            println!("a={} x={} y={} st={:08b} pc={:04X} st_ptr={:02X} | opcode={:02X}", self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr, self.opcode);
+        } else {
+            self.cycle_counter -= 1;
         }
-        self.cycle_counter -= 1;
     }
 
     pub fn irq(&mut self) {
@@ -669,7 +668,7 @@ impl Emu6502 {
     fn NOP(&mut self) {}
 
     fn XEP(&mut self) {
-        panic!("undefinded opcode: {}", self.opcode);
+        eprintln!("undefinded opcode: {:02X}", self.opcode);
     }
 }
 
