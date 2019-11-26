@@ -1,6 +1,5 @@
 extern crate sdl2;
 
-use sdl2::Sdl;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
@@ -30,7 +29,21 @@ impl Device {
 
     fn insert_cartridge(&mut self, cartridge: Cartridge) {
         self.bus.deref().borrow_mut().insert_cartridge(Rc::new(RefCell::new(cartridge)));
-        self.cpu.irq();
+        self.cpu.reset();
+    }
+
+    fn print_memory_dump(&self) {
+        let curent_prog_counter = self.cpu.get_program_counter();
+        let min = curent_prog_counter - 10;
+        let max = curent_prog_counter + 10;
+        for i in min..max {
+            if i == curent_prog_counter {
+                print!(" > ");
+            } else {
+                print!("   ");
+            }
+            println!("{:04X} - {:02X}", i, self.bus.deref().borrow_mut().read_cpu_ram(i));
+        }
     }
 
     fn clock(&mut self) {
@@ -41,7 +54,7 @@ impl Device {
 fn main() {
     let mut screen = Screen::new();
 
-    let cart = Cartridge::new("Donkey_Kong.nes");
+    let cart = Cartridge::new("Test.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
@@ -57,7 +70,10 @@ fn main() {
                         device.clock();
                     }
                     if keycode.unwrap() == Keycode::M {
-                        // print memory dump
+                        device.print_memory_dump();
+                    }
+                    if keycode.unwrap() == Keycode::V {
+                        // get address from console and read data from this address
                     }
                 },
                 _ => ()

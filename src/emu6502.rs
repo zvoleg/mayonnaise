@@ -89,16 +89,20 @@ impl Emu6502 {
         }
     }
 
+    pub fn get_program_counter(&self) -> u16 {
+        self.prog_counter
+    }
+
     pub fn clock(&mut self) {
         if self.cycle_counter == 0 {
             self.additional_cycles = 0;
             self.opcode = self.read_data(self.prog_counter);
+            println!("a={} x={} y={} st={:08b} pc={:04X} st_ptr={:02X} | opcode={:02X}", self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr, self.opcode);
             self.prog_counter += 1;
             let op = &OPCODES[self.opcode as usize];
             (op.addressing_mode)(self);
             (op.instruction)(self);
             self.cycle_counter = op.cycle_amount;
-            println!("a={} x={} y={} st={:08b} pc={:04X} st_ptr={:02X} | opcode={:02X}", self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr, self.opcode);
         } else {
             self.cycle_counter -= 1;
         }
