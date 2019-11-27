@@ -5,7 +5,7 @@ use std::ops::Deref;
 use crate::program::Cartridge;
 
 pub struct Bus {
-    cpu_ram: [u8; 0x07FF],
+    cpu_ram: [u8; 0x0800],
     ppu_registers: [u8; 8],
     cartridge: Option<Rc<RefCell<Cartridge>>>,
 }
@@ -13,7 +13,7 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Bus {
         Bus {
-            cpu_ram: [0; 0x07FF],
+            cpu_ram: [0; 0x0800],
             ppu_registers: [0; 8],
             cartridge: None,
         }

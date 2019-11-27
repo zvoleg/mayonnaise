@@ -4,12 +4,16 @@ use super::bus::Bus;
 
 macro_rules! op {
     ($ind: literal, $addr:ident, $instr:ident, $amount: expr) => {
-        Op { addressing_mode: &Emu6502::$addr, instruction: &Emu6502::$instr, cycle_amount: $amount }
+        Op { addressing_mode_name: stringify!($addr), addressing_mode: &Emu6502::$addr,
+             instruction_name: stringify!($instr), instruction: &Emu6502::$instr,
+             cycle_amount: $amount }
     };
 }
 
 struct Op<'a> {
+    addressing_mode_name: &'a str,
     addressing_mode: &'a dyn Fn(&mut Emu6502),
+    instruction_name: &'a str,
     instruction: &'a dyn Fn(&mut Emu6502),
     cycle_amount: u8
 }
@@ -97,10 +101,19 @@ impl Emu6502 {
         if self.cycle_counter == 0 {
             self.additional_cycles = 0;
             self.opcode = self.read_data(self.prog_counter);
-            println!("a={} x={} y={} st={:08b} pc={:04X} st_ptr={:02X} | opcode={:02X}", self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr, self.opcode);
-            self.prog_counter += 1;
             let op = &OPCODES[self.opcode as usize];
+            print!(
+                "a={} x={} y={} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode: {} {} ",
+                self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
+                op.instruction_name, op.addressing_mode_name
+            );
+            self.prog_counter += 1;
             (op.addressing_mode)(self);
+            if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
+                println!("");
+            } else {
+                println!("{:04X}", self.address);
+            }
             (op.instruction)(self);
             self.cycle_counter = op.cycle_amount;
         } else {

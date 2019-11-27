@@ -1,11 +1,12 @@
 extern crate sdl2;
 
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::ops::Deref;
+use std::io::{stdin, stdout, Write};
+
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
 
 use emu::emu6502::Emu6502;
 use emu::bus::Bus;
@@ -33,11 +34,14 @@ impl Device {
     }
 
     fn print_memory_dump(&self) {
-        let curent_prog_counter = self.cpu.get_program_counter();
-        let min = curent_prog_counter - 10;
-        let max = curent_prog_counter + 10;
+        self.print_memory_by_address(self.cpu.get_program_counter(), 10);
+    }
+
+    fn print_memory_by_address(&self, address: u16, offset: u16) {
+        let min = address - offset;
+        let max = address + offset;
         for i in min..max {
-            if i == curent_prog_counter {
+            if i == address {
                 print!(" > ");
             } else {
                 print!("   ");
@@ -54,7 +58,7 @@ impl Device {
 fn main() {
     let mut screen = Screen::new();
 
-    let cart = Cartridge::new("Test.nes");
+    let cart = Cartridge::new("Donkey_Kong.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
@@ -73,7 +77,14 @@ fn main() {
                         device.print_memory_dump();
                     }
                     if keycode.unwrap() == Keycode::V {
-                        // get address from console and read data from this address
+                        let mut input = String::new();
+                        stdout().flush().unwrap();
+                        stdin().read_line(&mut input).unwrap();
+                        let parse_result = u16::from_str_radix(input.trim(), 16);
+                        match parse_result {
+                            Ok(idx) => device.print_memory_by_address(idx, 2),
+                            Err(_)  => println!("index must be in hex format"),
+                        }
                     }
                 },
                 _ => ()
