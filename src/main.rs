@@ -38,8 +38,8 @@ impl Device {
     }
 
     fn print_memory_by_address(&self, address: u16, offset: u16) {
-        let min = address - offset;
-        let max = address + offset;
+        let min = address.saturating_sub(offset);
+        let max = address.saturating_add(offset);
         for i in min..max {
             if i == address {
                 print!(" > ");
