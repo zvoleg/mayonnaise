@@ -6,7 +6,7 @@ pub struct Cartridge {
     chr_rom: Vec<u8>,
     size_prg: u8,
     size_chr: u8,
-    mapper_id: u8,
+    mapper: Box<Mapper>,
 }
 
 impl Cartridge {
@@ -36,27 +36,34 @@ impl Cartridge {
         prg_rom.clone_from_slice(&memory[idx..idx + (16384 * size_prg as usize)]);
         idx += (16384 * size_prg as u16) as usize;
         chr_rom.clone_from_slice(&memory[idx..idx + (8192 * size_chr as usize)]);
+        let mapper = Cartridge::create_mapper(size_prg, size_chr, mapper_id);
 
         Cartridge {
             prg_rom,
             chr_rom,
             size_prg,
             size_chr,
-            mapper_id
+            mapper
         }
     }
 
+    fn create_mapper(size_prg: u8, size_chr: u8, mapper_id: u8) -> Box<dyn Mapper> {
+        let mapper = match mapper_id {
+            000 => Mapper000 { size_prg, size_chr },
+            _   => panic!("unknown mapper: {}", mapper_id),
+        };
+        Box::new(mapper)
+    }
+
     pub fn read_prg_rom(&self, address: u16) -> u8 {
-        match self.mapper_id {
-            000 => Mapper000{size_prg: self.size_prg, size_chr: self.size_chr}.read_prg_rom(&self.prg_rom, address),
-            _   => 0
-        }
+        let idx = self.mapper.prg_addr(address);
+        self.prg_rom[idx as usize]
     }
 }
 
 trait Mapper {
-    fn read_prg_rom(&self, memory: &Vec<u8>, address: u16) -> u8;
-    fn read_chr_rom(&self, memory: &Vec<u8>, address: u16) -> u8;
+    fn prg_addr(&self, address: u16) -> u16;
+    fn chr_addr(&self, address: u16) -> u16;
 }
 
 struct Mapper000 {
@@ -65,15 +72,15 @@ struct Mapper000 {
 }
 
 impl Mapper for Mapper000 {
-    fn read_prg_rom(&self, memory: &Vec<u8>, address: u16) -> u8 {
+    fn prg_addr(&self, address: u16) -> u16 {
         let mut idx = address & 0x3FFF;
         if self.size_prg == 2 && address >= 0xC000 {
             idx += 16384;
         }
-        memory[idx as usize]
+        idx
     }
 
-    fn read_chr_rom(&self, memory: &Vec<u8>, address: u16) -> u8 {
-        0
+    fn chr_addr(&self, address: u16) -> u16 {
+        address
     }
 }

@@ -56,7 +56,7 @@ impl Device {
 }
 
 fn main() {
-    let mut screen = Screen::new();
+    let mut screen = Screen::new(2);
 
     let cart = Cartridge::new("Donkey_Kong.nes");
     let mut device = Device::new();
