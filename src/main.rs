@@ -62,6 +62,8 @@ fn main() {
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
+    let mut auto = false;
+    let mut manual_clock = false;
     let mut event_pump = screen.get_events();
     'lock: loop {
         for event in event_pump.poll_iter() {
@@ -71,10 +73,14 @@ fn main() {
                         break 'lock;
                     }
                     if keycode.unwrap() == Keycode::C {
-                        device.clock();
+                        manual_clock = true;
                     }
                     if keycode.unwrap() == Keycode::M {
                         device.print_memory_dump();
+                    }
+                    if keycode.unwrap() == Keycode::A {
+                        auto = !auto;
+                        println!("auto mode: {}", auto);
                     }
                     if keycode.unwrap() == Keycode::V {
                         let mut input = String::new();
@@ -89,6 +95,10 @@ fn main() {
                 },
                 _ => ()
             }
+        }
+        if auto || manual_clock {
+            device.clock();
+            manual_clock = false;
         }
     }
 }
