@@ -27,7 +27,7 @@ const OPCODES: [Op<'static>; 256] = [
     op!(0x50, REL, BVC, 2), op!(0x51, IDY, EOR, 5), op!(0x52, IMP, XEP, 0), op!(0x53, IMP, XEP, 0), op!(0x54, IMP, XEP, 0), op!(0x55, ZPX, EOR, 4), op!(0x56, ZPX, LSR, 6), op!(0x57, IMP, XEP, 0), op!(0x58, IMP, CLI, 2), op!(0x59, ABY, EOR, 4), op!(0x5A, IMP, XEP, 0), op!(0x5B, IMP, XEP, 0), op!(0x5C, IMP, XEP, 0), op!(0x5D, ABX, EOR, 4), op!(0x5E, ABX, LSR, 7), op!(0x5F, IMP, XEP, 0),
     op!(0x60, IMP, RTS, 6), op!(0x61, IDX, ADC, 6), op!(0x62, IMP, XEP, 0), op!(0x63, IMP, XEP, 0), op!(0x64, IMP, XEP, 0), op!(0x65, ZP0, ADC, 3), op!(0x66, ZP0, ROR, 5), op!(0x67, IMP, XEP, 0), op!(0x68, IMP, PLA, 4), op!(0x69, IMM, ADC, 2), op!(0x6A, ACC, ROR, 2), op!(0x6B, IMP, XEP, 0), op!(0x6C, IND, JMP, 5), op!(0x6D, ABS, ADC, 4), op!(0x6E, ABS, ROR, 6), op!(0x6F, IMP, XEP, 0),
     op!(0x70, REL, BVS, 2), op!(0x71, IDY, ADC, 5), op!(0x72, IMP, XEP, 0), op!(0x73, IMP, XEP, 0), op!(0x74, IMP, XEP, 0), op!(0x75, ZPX, ADC, 4), op!(0x76, ZPX, ROR, 6), op!(0x77, IMP, XEP, 0), op!(0x78, IMP, SEI, 2), op!(0x79, ABY, ADC, 4), op!(0x7A, IMP, XEP, 0), op!(0x7B, IMP, XEP, 0), op!(0x7C, IMP, XEP, 0), op!(0x7D, ABX, ADC, 4), op!(0x7E, ABX, ROR, 7), op!(0x7F, IMP, XEP, 0),
-    op!(0x80, IMP, XEP, 0), op!(0x81, IDX, STA, 6), op!(0x82, IMP, XEP, 0), op!(0x83, IMP, XEP, 0), op!(0x84, ZP0, STY, 3), op!(0x85, ZP0, STA, 3), op!(0x86, ZP0, STX, 3), op!(0x87, IMP, XEP, 0), op!(0x88, IMP, DEY, 2), op!(0x89, IMP, XEP, 0), op!(0x8A, IMM, TXA, 2), op!(0x8B, IMP, XEP, 0), op!(0x8C, ABS, STY, 4), op!(0x8D, ABS, STA, 4), op!(0x8E, ABS, STX, 4), op!(0x8F, IMP, XEP, 0),
+    op!(0x80, IMP, XEP, 0), op!(0x81, IDX, STA, 6), op!(0x82, IMP, XEP, 0), op!(0x83, IMP, XEP, 0), op!(0x84, ZP0, STY, 3), op!(0x85, ZP0, STA, 3), op!(0x86, ZP0, STX, 3), op!(0x87, IMP, XEP, 0), op!(0x88, IMP, DEY, 2), op!(0x89, IMP, XEP, 0), op!(0x8A, IMP, TXA, 2), op!(0x8B, IMP, XEP, 0), op!(0x8C, ABS, STY, 4), op!(0x8D, ABS, STA, 4), op!(0x8E, ABS, STX, 4), op!(0x8F, IMP, XEP, 0),
     op!(0x90, REL, BCC, 2), op!(0x91, IDY, STA, 6), op!(0x92, IMP, XEP, 0), op!(0x93, IMP, XEP, 0), op!(0x94, ZPX, STY, 4), op!(0x95, ZPX, STA, 4), op!(0x96, ZPY, STX, 4), op!(0x97, IMP, XEP, 0), op!(0x98, IMP, TYA, 2), op!(0x99, ABY, STA, 5), op!(0x9A, IMP, TXS, 2), op!(0x9B, IMP, XEP, 0), op!(0x9C, IMP, XEP, 0), op!(0x9D, ABX, STA, 5), op!(0x9E, IMP, XEP, 0), op!(0x9F, IMP, XEP, 0),
     op!(0xA0, IMM, LDY, 2), op!(0xA1, IDX, LDA, 6), op!(0xA2, IMM, LDX, 2), op!(0xA3, IMP, XEP, 0), op!(0xA4, ZP0, LDY, 3), op!(0xA5, ZP0, LDA, 3), op!(0xA6, ZP0, LDX, 3), op!(0xA7, IMP, XEP, 0), op!(0xA8, IMP, TAY, 2), op!(0xA9, IMM, LDA, 2), op!(0xAA, IMP, TAX, 2), op!(0xAB, IMP, XEP, 0), op!(0xAC, ABS, LDY, 4), op!(0xAD, ABS, LDA, 4), op!(0xAE, ABS, LDX, 4), op!(0xAF, IMP, XEP, 0),
     op!(0xB0, REL, BCS, 2), op!(0xB1, IDY, LDA, 5), op!(0xB2, IMP, XEP, 0), op!(0xB3, IMP, XEP, 0), op!(0xB4, ZPX, LDY, 4), op!(0xB5, ZPX, LDA, 4), op!(0xB6, ZPY, LDX, 4), op!(0xB7, IMP, XEP, 0), op!(0xB8, IMP, CLV, 2), op!(0xB9, ABY, LDA, 4), op!(0xBA, IMP, TSX, 2), op!(0xBB, IMP, XEP, 0), op!(0xBC, ABX, LDY, 4), op!(0xBD, ABX, LDA, 4), op!(0xBE, ABY, LDX, 4), op!(0xBF, IMP, XEP, 0),
@@ -104,9 +104,9 @@ impl Emu6502 {
             let op = &OPCODES[self.opcode as usize];
 
             print!(
-                "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode: {} {} ",
+                "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode {:0X}: {} {} ",
                 self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
-                op.instruction_name, op.addressing_mode_name
+                self.opcode, op.instruction_name, op.addressing_mode_name
             );
 
             self.prog_counter += 1;
@@ -120,7 +120,7 @@ impl Emu6502 {
             } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
                 println!("");
             } else {
-                println!("{:04X}", self.address);
+                println!("{:04X} = {:02X}", self.address, self.read_data(self.address));
             }
 
             (op.instruction)(self);

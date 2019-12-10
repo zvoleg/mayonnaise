@@ -75,12 +75,15 @@ fn main() {
                     if keycode.unwrap() == Keycode::C {
                         manual_clock = true;
                     }
-                    if keycode.unwrap() == Keycode::M {
-                        device.print_memory_dump();
-                    }
                     if keycode.unwrap() == Keycode::A {
                         auto = !auto;
                         println!("auto mode: {}", auto);
+                    }
+                    if keycode.unwrap() == Keycode::R {
+                        device.cpu.reset();
+                    }
+                    if keycode.unwrap() == Keycode::M {
+                        device.print_memory_dump();
                     }
                     if keycode.unwrap() == Keycode::V {
                         let mut input = String::new();
