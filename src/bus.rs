@@ -21,6 +21,7 @@ impl Bus {
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
         self.cartridge = Some(cartridge);
+        self.ppu_registers[0x02] = 0x80;
         println!("cartridge insert");
     }
 

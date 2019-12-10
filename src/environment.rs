@@ -20,6 +20,7 @@ impl Screen {
         let video = sdl.video().unwrap();
         let window = video.window("mayonnaise", 256 * pixel_size + 20 + 128, 240 * pixel_size).
             position_centered().
+            opengl().
             build().unwrap();
         let canvas = window.into_canvas().build().unwrap();
         let main_area = Area::new(0, 0, 256, 240, pixel_size);
@@ -83,10 +84,9 @@ impl Area {
 
     fn present(&self, texture: &mut Texture) {
         texture.with_lock(None, |buffer: &mut [u8], _pitch: usize| {
-            let mut idx = 0;
             for (i, color) in self.buff.iter().enumerate() {
                 let (r, g, b) = color.rgb();
-                idx = i * 3;
+                let idx = i * 3;
                 buffer[idx] = r;
                 buffer[idx + 1] = g;
                 buffer[idx + 2] = b;

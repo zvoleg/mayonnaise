@@ -103,25 +103,25 @@ impl Emu6502 {
             self.opcode = self.read_data(self.prog_counter);
             let op = &OPCODES[self.opcode as usize];
 
-            print!(
-                "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode {:0X}: {} {} ",
-                self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
-                self.opcode, op.instruction_name, op.addressing_mode_name
-            );
+            // print!(
+            //     "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode {:02X}: {} {} ",
+            //     self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
+            //     self.opcode, op.instruction_name, op.addressing_mode_name
+            // );
 
             self.prog_counter += 1;
             (op.addressing_mode)(self);
 
-            if op.instruction_name.chars().next().unwrap() == 'B'
-                && op.instruction_name != "BIT"
-                && op.instruction_name != "BRK"
-            {
-                println!("{}", self.addr_offset as i16);
-            } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
-                println!("");
-            } else {
-                println!("{:04X} = {:02X}", self.address, self.read_data(self.address));
-            }
+            // if op.instruction_name.chars().next().unwrap() == 'B'
+            //     && op.instruction_name != "BIT"
+            //     && op.instruction_name != "BRK"
+            // {
+            //     println!("{}", self.addr_offset as i16);
+            // } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
+            //     println!("");
+            // } else {
+            //     println!("{:04X} = {:02X}", self.address, self.read_data(self.address));
+            // }
 
             (op.instruction)(self);
             self.cycle_counter = op.cycle_amount;
