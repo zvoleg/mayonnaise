@@ -57,13 +57,18 @@ impl Cartridge {
 
     pub fn read_prg_rom(&self, address: u16) -> u8 {
         let idx = self.mapper.prg_addr(address);
-        self.prg_rom[idx as usize]
+        self.prg_rom[idx]
+    }
+
+    pub fn read_chr_rom(&self, address: u16) -> u8 {
+        let idx = self.mapper.chr_addr(address);
+        self.chr_rom[idx]
     }
 }
 
 trait Mapper {
-    fn prg_addr(&self, address: u16) -> u16;
-    fn chr_addr(&self, address: u16) -> u16;
+    fn prg_addr(&self, address: u16) -> usize;
+    fn chr_addr(&self, address: u16) -> usize;
 }
 
 struct Mapper000 {
@@ -72,15 +77,15 @@ struct Mapper000 {
 }
 
 impl Mapper for Mapper000 {
-    fn prg_addr(&self, address: u16) -> u16 {
+    fn prg_addr(&self, address: u16) -> usize {
         let mut idx = address & 0x3FFF;
         if self.size_prg == 2 && address >= 0xC000 {
             idx += 16384;
         }
-        idx
+        idx as usize
     }
 
-    fn chr_addr(&self, address: u16) -> u16 {
-        address
+    fn chr_addr(&self, address: u16) -> usize {
+        address as usize
     }
 }

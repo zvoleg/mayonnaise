@@ -103,5 +103,6 @@ fn main() {
             device.clock();
             manual_clock = false;
         }
+        screen.update();
     }
 }
