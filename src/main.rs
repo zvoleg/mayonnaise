@@ -56,7 +56,7 @@ impl Device {
 }
 
 fn main() {
-    let mut screen = Screen::new(2);
+    let mut screen = Screen::new(1);
 
     let cart = Cartridge::new("Donkey_Kong.nes");
     let mut device = Device::new();
@@ -65,6 +65,9 @@ fn main() {
     let mut auto = false;
     let mut manual_clock = false;
     let mut event_pump = screen.get_events();
+    let mut x = 0;
+    let mut y = 0;
+    let mut color = 0;
     'lock: loop {
         for event in event_pump.poll_iter() {
             match event {
@@ -103,6 +106,17 @@ fn main() {
             device.clock();
             manual_clock = false;
         }
-        screen.update();
+        if x > 255 {
+            x = 0;
+            y += 1;
+        }
+        if y > 239 {
+            y = 0;
+            screen.update();
+        }
+        screen.set_point_at_main_area(x, y, color);
+        let (res, _) = color.overflowing_add(75);
+        color = res;
+        x += 1;
     }
 }

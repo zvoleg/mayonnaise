@@ -20,7 +20,7 @@ impl Screen {
         let window = video.window("mayonnaise", 256 * pixel_size + 20 + 128, 240 * pixel_size).
             position_centered().
             build().unwrap();
-        let mut canvas = window.into_canvas().build().unwrap();
+        let canvas = window.into_canvas().build().unwrap();
         let main_area = Area::new(0, 0, 256, 240, pixel_size);
         Screen{ sdl, canvas, main_area }
     }
@@ -29,7 +29,7 @@ impl Screen {
         let r = (color >> 16) as u8;
         let g = (color >> 8) as u8;
         let b = color as u8;
-        self.main_area.set_point(x, y, Color::RGB(r, g, b), &mut self.canvas)
+        self.main_area.set_point(x, y, Color::RGB(r, g, b))
     }
 
     pub fn get_events(&mut self) -> EventPump {
@@ -44,7 +44,7 @@ impl Screen {
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         self.canvas.clear();
         self.main_area.draw_border(&mut self.canvas);
-        self.set_point_at_main_area(40, 10, 0xFF33AA); // implement point array
+        self.main_area.presen(&mut self.canvas);
         self.canvas.present();
     }
 }
@@ -54,12 +54,14 @@ struct Area {
     y: i32,
     width: u32,
     height: u32,
-    pixel_size: u32
+    pixel_size: u32,
+    buff: Vec<Color>
 }
 
 impl Area {
     fn new(x: i32, y: i32, width: u32, height: u32, pixel_size: u32) -> Area {
-        Area { x, y, width, height, pixel_size }
+        let buff = vec![Color::RGB(0, 0, 0); (width * height) as usize];
+        Area { x, y, width, height, pixel_size, buff }
     }
 
     fn draw_border(&self, canvas: &mut Canvas<Window>) {
@@ -68,8 +70,18 @@ impl Area {
         canvas.draw_rect(rect).unwrap();
     }
 
-    fn set_point(&self, x: i32, y: i32, color: Color, canvas: &mut Canvas<Window>) {
-        canvas.set_draw_color(color);
-        canvas.fill_rect(Rect::new(self.x + x, self.y + y, self.pixel_size, self.pixel_size)).unwrap();
+    fn set_point(&mut self, x: i32, y: i32, color: Color) {
+        let idx = y * self.width as i32 + x;
+        self.buff[idx as usize] = color;
+    }
+
+    fn presen(&self, canvas: &mut Canvas<Window>) {
+        for (i, color) in self.buff.iter().enumerate() {
+            let x = i as u32 % self.width;
+            let y = i as u32 / self.width;
+            canvas.set_draw_color(*color);
+            let rect = Rect::new((x * self.pixel_size) as i32, (y * self.pixel_size) as i32, self.pixel_size, self.pixel_size);
+            canvas.fill_rect(rect).unwrap();
+        }
     }
 }
