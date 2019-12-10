@@ -42,8 +42,8 @@ enum Flag {
     Z = 1 << 1, // Zero
     I = 1 << 2, // Interrupt
     D = 1 << 3, // Decimal
-    B = 1 << 4, // Break
-    U = 1 << 5, // Unused
+    _B = 1 << 4,// Break
+    _U = 1 << 5,// Unused
     V = 1 << 6, // Overflow
     S = 1 << 7  // Sign
 }
