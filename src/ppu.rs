@@ -51,14 +51,14 @@ impl Ppu {
 
     pub fn clock(&mut self) -> Option<u32> {
         self.cycle += 1;
-        if self.cycle == 340 {
+        if self.cycle == 257 {
             self.skanline += 1;
             self.cycle = 0;
         }
         if self.skanline == 241 && self.cycle == 1 {
             self.nmi_require = true;
         }
-        if self.skanline == 260 {
+        if self.skanline == 242 {
             self.skanline = 0;
         }
         if rand::random() {

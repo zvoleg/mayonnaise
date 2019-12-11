@@ -6,7 +6,7 @@ pub struct Cartridge {
     chr_rom: Vec<u8>,
     size_prg: u8,
     size_chr: u8,
-    mapper: Box<Mapper>,
+    mapper: Box<dyn Mapper>,
 }
 
 impl Cartridge {
@@ -26,10 +26,6 @@ impl Cartridge {
         if trainer {
             idx += 512;
         }
-        println!("memory len = {}", memory.len());
-        println!("trainer = {}", trainer);
-        println!("size_prg = {}", size_prg);
-        println!("size_chr = {}", size_chr);
 
         let mut prg_rom: Vec<u8> = vec![0; (16384 * size_prg as u16) as usize];
         let mut chr_rom: Vec<u8> = vec![0; (8192 * size_chr as u16) as usize];

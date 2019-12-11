@@ -68,7 +68,17 @@ impl Device {
 }
 
 fn main() {
-    let mut screen = Screen::new(1);
+    let pixel_size = 1;
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    let window = video.window("mayonnaise", 256 * pixel_size + 20 + 128, 240 * pixel_size).
+        position_centered().
+        opengl().
+        build().unwrap();
+    let canvas = window.into_canvas().accelerated().build().unwrap();
+    let texture_creator = canvas.texture_creator();
+
+    let mut screen = Screen::new(sdl, &texture_creator, canvas, pixel_size);
 
     let cart = Cartridge::new("Donkey_Kong.nes");
     let mut device = Device::new();
@@ -77,8 +87,6 @@ fn main() {
     let mut auto = false;
     let mut manual_clock = false;
     let mut event_pump = screen.get_events();
-    let mut x = 0;
-    let mut y = 0;
     'lock: loop {
         for event in event_pump.poll_iter() {
             match event {
@@ -113,22 +121,14 @@ fn main() {
                 _ => ()
             }
         }
-        if x > 255 {
-            x = 0;
-            y += 1;
-        }
-        if y > 239 {
-            y = 0;
-            if device.ppu.nmi_require() {
-                screen.update();
-                device.cpu.nmi();
-                device.ppu.reset_nmi();
-            }
+        if device.ppu.nmi_require() {
+            screen.update();
+            device.cpu.nmi();
+            device.ppu.reset_nmi();
         }
         if auto || manual_clock {
-            screen.set_point_at_main_area(x, y, device.clock());
+            screen.set_point_at_main_area(device.clock());
             manual_clock = false;
         }
-        x += 1;
     }
 }
