@@ -49,7 +49,7 @@ impl Ppu {
         self.data = self.bus.borrow().read_cpu_ram(0x2007);
     }
 
-    pub fn clock(&mut self) -> u32 {
+    pub fn clock(&mut self) -> Option<u32> {
         self.cycle += 1;
         if self.cycle == 257 {
             self.skanline += 1;
@@ -62,9 +62,9 @@ impl Ppu {
             self.skanline = 0;
         }
         if rand::random() {
-            0xFFFFFF
+            Some(0xFFFFFF)
         } else {
-            0
+            Some(0)
         }
     }
 

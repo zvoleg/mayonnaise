@@ -4,7 +4,6 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::io::{stdin, stdout, Write};
-use std::time::SystemTime;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -64,7 +63,7 @@ impl Device {
         if self.clock_counter % 3 == 0 {
             self.cpu.clock();
         }
-        color
+        color.unwrap()
     }
 }
 
@@ -122,14 +121,22 @@ fn main() {
                 _ => ()
             }
         }
-        if device.ppu.nmi_require() {
-            screen.update();
-            device.cpu.nmi();
-            device.ppu.reset_nmi();
-        }
-        if auto || manual_clock {
+
+        if auto {
             while !device.ppu.nmi_require() {
                 screen.set_point_at_main_area(device.clock());
+            }
+            if device.ppu.nmi_require() {
+                screen.update();
+                device.cpu.nmi();
+                device.ppu.reset_nmi();
+            }
+        } else if manual_clock {
+            screen.set_point_at_main_area(device.clock());
+            screen.update();
+            if device.ppu.nmi_require() {
+                device.cpu.nmi();
+                device.ppu.reset_nmi();
             }
             manual_clock = false;
         }
