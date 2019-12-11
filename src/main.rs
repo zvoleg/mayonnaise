@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::io::{stdin, stdout, Write};
+use std::time::SystemTime;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -63,12 +64,12 @@ impl Device {
         if self.clock_counter % 3 == 0 {
             self.cpu.clock();
         }
-        color.unwrap()
+        color
     }
 }
 
 fn main() {
-    let pixel_size = 1;
+    let pixel_size = 2;
     let sdl = sdl2::init().unwrap();
     let video = sdl.video().unwrap();
     let window = video.window("mayonnaise", 256 * pixel_size + 20 + 128, 240 * pixel_size).
@@ -127,7 +128,9 @@ fn main() {
             device.ppu.reset_nmi();
         }
         if auto || manual_clock {
-            screen.set_point_at_main_area(device.clock());
+            while !device.ppu.nmi_require() {
+                screen.set_point_at_main_area(device.clock());
+            }
             manual_clock = false;
         }
     }
