@@ -21,6 +21,7 @@ impl Bus {
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
         self.cartridge = Some(cartridge);
+        self.ppu_registers[0x02] = 0x80;
         println!("cartridge insert");
     }
 
@@ -44,5 +45,9 @@ impl Bus {
         } else if address >= 0x4020 {
             // cartrige space, maybe need access to mapper
         }
+    }
+
+    pub fn read_ppu(&self, address: u16) -> u8 {
+        self.cartridge.as_ref().unwrap().deref().borrow_mut().read_chr_rom(address)
     }
 }

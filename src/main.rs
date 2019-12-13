@@ -9,22 +9,28 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
 use emu::emu6502::Emu6502;
+use emu::ppu::Ppu;
 use emu::bus::Bus;
 use emu::program::Cartridge;
-use emu::environment::Screen;
+use emu::environment::{RecourceHolder, Screen};
 
 struct Device {
     cpu: Emu6502,
+    ppu: Ppu,
     bus: Rc<RefCell<Bus>>,
+    clock_counter: u32,
 }
 
 impl Device {
     fn new () -> Device {
         let bus = Rc::new(RefCell::new(Bus::new()));
         let cpu = Emu6502::new(bus.clone());
+        let ppu = Ppu::new(bus.clone());
         Device {
             cpu,
-            bus
+            ppu,
+            bus,
+            clock_counter: 0
         }
     }
 
@@ -50,24 +56,29 @@ impl Device {
         }
     }
 
-    fn clock(&mut self) {
-        self.cpu.clock();
+    fn clock(&mut self) -> u32 {
+        let color = self.ppu.clock();
+        let (res, _) = self.clock_counter.overflowing_add(1);
+        self.clock_counter = res;
+        if self.clock_counter % 3 == 0 {
+            self.cpu.clock();
+        }
+        color.unwrap()
     }
 }
 
 fn main() {
-    let mut screen = Screen::new(1);
+    let pixel_size = 2;
+    let  (mut recource_holder, canvas) = RecourceHolder::init(pixel_size);
+    let mut screen = Screen::new(&mut recource_holder, canvas, pixel_size);
 
-    let cart = Cartridge::new("Donkey_Kong.nes");
+    let cart = Cartridge::new("Test.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
     let mut auto = false;
     let mut manual_clock = false;
     let mut event_pump = screen.get_events();
-    let mut x = 0;
-    let mut y = 0;
-    let mut color = 0;
     'lock: loop {
         for event in event_pump.poll_iter() {
             match event {
@@ -102,21 +113,24 @@ fn main() {
                 _ => ()
             }
         }
-        if auto || manual_clock {
-            device.clock();
+
+        if auto {
+            while !device.ppu.nmi_require() {
+                screen.set_point_at_main_area(device.clock());
+            }
+            if device.ppu.nmi_require() {
+                screen.update();
+                device.cpu.nmi();
+                device.ppu.reset_nmi();
+            }
+        } else if manual_clock {
+            screen.set_point_at_main_area(device.clock());
+            screen.update();
+            if device.ppu.nmi_require() {
+                device.cpu.nmi();
+                device.ppu.reset_nmi();
+            }
             manual_clock = false;
         }
-        if x > 255 {
-            x = 0;
-            y += 1;
-        }
-        if y > 239 {
-            y = 0;
-            screen.update();
-        }
-        screen.set_point_at_main_area(x, y, color);
-        let (res, _) = color.overflowing_add(75);
-        color = res;
-        x += 1;
     }
 }
