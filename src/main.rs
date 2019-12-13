@@ -12,7 +12,7 @@ use emu::emu6502::Emu6502;
 use emu::ppu::Ppu;
 use emu::bus::Bus;
 use emu::program::Cartridge;
-use emu::environment::Screen;
+use emu::environment::{RecourceHolder, Screen};
 
 struct Device {
     cpu: Emu6502,
@@ -69,18 +69,10 @@ impl Device {
 
 fn main() {
     let pixel_size = 2;
-    let sdl = sdl2::init().unwrap();
-    let video = sdl.video().unwrap();
-    let window = video.window("mayonnaise", 256 * pixel_size + 20 + 128, 240 * pixel_size).
-        position_centered().
-        opengl().
-        build().unwrap();
-    let canvas = window.into_canvas().accelerated().build().unwrap();
-    let texture_creator = canvas.texture_creator();
+    let  (mut recource_holder, canvas) = RecourceHolder::init(pixel_size);
+    let mut screen = Screen::new(&mut recource_holder, canvas, pixel_size);
 
-    let mut screen = Screen::new(sdl, &texture_creator, canvas, pixel_size);
-
-    let cart = Cartridge::new("Donkey_Kong.nes");
+    let cart = Cartridge::new("Test.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     

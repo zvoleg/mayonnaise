@@ -5,6 +5,10 @@ use std::cell::RefCell;
 use crate::bus::Bus;
 
 pub struct Ppu {
+    sprites: [u8; 0x2000], // 0x0000 - 0x1FFF <- it stored on cartridge, access through mapper
+    name_table: [u8; 0x1000], // 0x2000 - 0x2FFF
+    pallette: [u8; 0x0020], // 0x3F00 - 0x3F1F
+
     bus: Rc<RefCell<Bus>>,
     pub skanline: u16,
     pub cycle: u16,
@@ -23,6 +27,9 @@ pub struct Ppu {
 impl Ppu {
     pub fn new(bus: Rc<RefCell<Bus>>) -> Ppu {
         Ppu {
+            sprites: [0; 0x2000],
+            name_table: [0; 0x1000],
+            pallette: [0; 0x0020],
             bus,
             skanline:    0,
             cycle:       0,

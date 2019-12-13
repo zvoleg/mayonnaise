@@ -46,4 +46,8 @@ impl Bus {
             // cartrige space, maybe need access to mapper
         }
     }
+
+    pub fn read_ppu(&self, address: u16) -> u8 {
+        self.cartridge.as_ref().unwrap().deref().borrow_mut().read_chr_rom(address)
+    }
 }

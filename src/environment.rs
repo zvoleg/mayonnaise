@@ -7,25 +7,43 @@ use sdl2::EventPump;
 use sdl2::pixels::{Color, PixelFormat, PixelFormatEnum};
 use sdl2::rect::Rect;
 
-pub struct Screen<'a> {
+pub struct RecourceHolder {
     sdl: Sdl,
+    texture_creator: TextureCreator<WindowContext>,
+}
+
+impl RecourceHolder {
+    pub fn init(pixel_size: u32) -> (RecourceHolder, Canvas<Window>) {
+        let sdl = sdl2::init().unwrap();
+        let video = sdl.video().unwrap();
+        let window = video.window("mayonnaise", 256 * pixel_size + 20 + 256, 240 * pixel_size).
+            position_centered().
+            opengl().
+            build().unwrap();
+        let canvas = window.into_canvas().accelerated().build().unwrap();
+        let texture_creator = canvas.texture_creator();
+        (RecourceHolder { sdl, texture_creator }, canvas)
+    }
+}
+
+pub struct Screen<'a> {
+    recource_holder: &'a RecourceHolder,
     canvas: Canvas<Window>,
-    _texture_creator: &'a TextureCreator<WindowContext>,
     main_area: Area<'a>,
     sprite_area: Area<'a>,
     pixel_format: PixelFormat,
 }
 
 impl<'a> Screen<'a> {
-    pub fn new(sdl: Sdl, texture_creator: &'a TextureCreator<WindowContext>, canvas: Canvas<Window>, pixel_size: u32) -> Screen<'a> {
+    pub fn new(recource_holder: &'a RecourceHolder, canvas: Canvas<Window>, pixel_size: u32) -> Screen<'a> {
         let pixel_format = unsafe { PixelFormat::from_ll(sdl2::sys::SDL_AllocFormat(PixelFormatEnum::RGB24 as u32)) };
-        let main_texture = texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 256, 240).
+        let main_texture = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 256, 240).
             map_err(|e| e.to_string()).unwrap();
         let main_area = Area::new(main_texture, 0, 0, 256, 240, pixel_size);
-        let sprite_texture = texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 60, 60).
+        let sprite_texture = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 256, 128).
             map_err(|e| e.to_string()).unwrap();
-        let sprite_area = Area::new(sprite_texture, (256 * pixel_size + 20) as i32, 0, 60, 60, 1);
-        Screen { sdl, canvas, _texture_creator: texture_creator, main_area, sprite_area, pixel_format }
+        let sprite_area = Area::new(sprite_texture, (256 * pixel_size + 20) as i32, 0, 256, 128, 1);
+        Screen { recource_holder: recource_holder, canvas, main_area, sprite_area, pixel_format }
     }
 
     pub fn set_point_at_main_area(&mut self, color: u32) {
@@ -33,7 +51,7 @@ impl<'a> Screen<'a> {
     }
 
     pub fn get_events(&mut self) -> EventPump {
-        self.sdl.event_pump().unwrap()
+        self.recource_holder.sdl.event_pump().unwrap()
     }
 
     pub fn clear(&mut self) {
