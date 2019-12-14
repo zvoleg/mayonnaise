@@ -16,7 +16,7 @@ impl RecourceHolder {
     pub fn init(pixel_size: u32) -> (RecourceHolder, Canvas<Window>) {
         let sdl = sdl2::init().unwrap();
         let video = sdl.video().unwrap();
-        let window = video.window("mayonnaise", 256 * pixel_size + 20 + 256, 240 * pixel_size).
+        let window = video.window("mayonnaise", 256 * pixel_size + 20 + (128 * pixel_size * 2) + 2, 240 * pixel_size).
             position_centered().
             opengl().
             build().unwrap();
@@ -30,24 +30,40 @@ pub struct Screen<'a> {
     recource_holder: &'a RecourceHolder,
     canvas: Canvas<Window>,
     main_area: Area<'a>,
-    sprite_area: Area<'a>,
+    sprite_area_left: Area<'a>,
+    sprite_area_right: Area<'a>,
     pixel_format: PixelFormat,
 }
 
 impl<'a> Screen<'a> {
     pub fn new(recource_holder: &'a RecourceHolder, canvas: Canvas<Window>, pixel_size: u32) -> Screen<'a> {
         let pixel_format = unsafe { PixelFormat::from_ll(sdl2::sys::SDL_AllocFormat(PixelFormatEnum::RGB24 as u32)) };
+
         let main_texture = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 256, 240).
             map_err(|e| e.to_string()).unwrap();
         let main_area = Area::new(main_texture, 0, 0, 256, 240, pixel_size);
-        let sprite_texture = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 256, 128).
+
+        let sprite_texture_left = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 128, 128).
             map_err(|e| e.to_string()).unwrap();
-        let sprite_area = Area::new(sprite_texture, (256 * pixel_size + 20) as i32, 0, 256, 128, 1);
-        Screen { recource_holder: recource_holder, canvas, main_area, sprite_area, pixel_format }
+        let sprite_area_left = Area::new(sprite_texture_left, (256 * pixel_size + 20) as i32, 0, 128, 128, 2);
+
+        let sprite_texture_right = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 128, 128).
+            map_err(|e| e.to_string()).unwrap();
+        let sprite_area_right = Area::new(sprite_texture_right, ((256 + 128) * pixel_size + 22) as i32, 0, 128, 128, 2);
+
+        Screen { recource_holder: recource_holder, canvas, main_area, sprite_area_left, sprite_area_right, pixel_format }
     }
 
     pub fn set_point_at_main_area(&mut self, color: u32) {
         self.main_area.set_next_point(Color::from_u32(&self.pixel_format, color));
+    }
+
+    pub fn set_point_at_sprite_area(&mut self, color: u32, table: u8) {
+        match table {
+            0 => self.sprite_area_left.set_next_point(Color::from_u32(&self.pixel_format, color)),
+            1 => self.sprite_area_right.set_next_point(Color::from_u32(&self.pixel_format, color)),
+            _ => (),
+        }
     }
 
     pub fn get_events(&mut self) -> EventPump {
@@ -62,15 +78,20 @@ impl<'a> Screen<'a> {
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         self.canvas.clear();
         self.main_area.update_texture();
-        self.sprite_area.update_texture();
+        self.sprite_area_left.update_texture();
+        self.sprite_area_right.update_texture();
         self.canvas.copy(
             &self.main_area.texture,
             None,
             self.main_area.dst).unwrap();
         self.canvas.copy(
-            &self.sprite_area.texture,
+            &self.sprite_area_left.texture,
             None,
-            self.sprite_area.dst).unwrap();
+            self.sprite_area_left.dst).unwrap();
+        self.canvas.copy(
+            &self.sprite_area_right.texture,
+            None,
+            self.sprite_area_right.dst).unwrap();
         self.canvas.present();
     }
 }

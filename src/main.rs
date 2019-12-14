@@ -37,6 +37,8 @@ impl Device {
     fn insert_cartridge(&mut self, cartridge: Cartridge) {
         self.bus.deref().borrow_mut().insert_cartridge(Rc::new(RefCell::new(cartridge)));
         self.cpu.reset();
+        self.ppu.read_all_sprites(0);
+        self.ppu.read_all_sprites(1);
     }
 
     fn print_memory_dump(&self) {
@@ -53,6 +55,17 @@ impl Device {
                 print!("   ");
             }
             println!("{:04X} - {:02X}", i, self.bus.deref().borrow_mut().read_cpu_ram(i));
+        }
+    }
+
+    fn read_pixel_pattern_table(&self, idx: usize, table: u8) -> u32 {
+        let pattern = &self.ppu.get_pattern_table(table);
+        match pattern[idx] {
+            0 => 0x222222,
+            1 => 0x5555AA,
+            2 => 0xDDCCAA,
+            3 => 0x55AA99,
+            _ => 0
         }
     }
 
@@ -76,6 +89,13 @@ fn main() {
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
+    for table in 0 .. 2 {
+        for idx in 0 .. 128 * 128 {
+            let pixel = device.read_pixel_pattern_table(idx, table);
+            screen.set_point_at_sprite_area(pixel, table);
+        }
+    }
+
     let mut auto = false;
     let mut manual_clock = false;
     let mut event_pump = screen.get_events();
