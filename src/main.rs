@@ -69,14 +69,14 @@ impl Device {
         }
     }
 
-    fn clock(&mut self) -> u32 {
+    fn clock(&mut self) -> Option<u32> {
         let color = self.ppu.clock();
         let (res, _) = self.clock_counter.overflowing_add(1);
         self.clock_counter = res;
         if self.clock_counter % 3 == 0 {
             self.cpu.clock();
         }
-        color.unwrap()
+        color
     }
 }
 
@@ -136,7 +136,10 @@ fn main() {
 
         if auto {
             while !device.ppu.nmi_require() {
-                screen.set_point_at_main_area(device.clock());
+                match device.clock() {
+                    Some(color) => screen.set_point_at_main_area(color),
+                    None => (),
+                }
             }
             if device.ppu.nmi_require() {
                 screen.update();
@@ -144,7 +147,10 @@ fn main() {
                 device.ppu.reset_nmi();
             }
         } else if manual_clock {
-            screen.set_point_at_main_area(device.clock());
+            match device.clock() {
+                Some(color) => screen.set_point_at_main_area(color),
+                None => (),
+            }
             screen.update();
             if device.ppu.nmi_require() {
                 device.cpu.nmi();

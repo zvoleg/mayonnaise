@@ -47,7 +47,7 @@ impl Bus {
         }
     }
 
-    pub fn read_ppu(&self, address: u16) -> u8 {
+    pub fn read_chr_from_cartridge(&self, address: u16) -> u8 {
         self.cartridge.as_ref().unwrap().deref().borrow_mut().read_chr_rom(address)
     }
 }

@@ -6,9 +6,22 @@ use crate::bus::Bus;
 
 pub struct Ppu {
     pallette_colors: [u32; 0x40],
-    patterns: [[u8; 0x4000]; 2],
-    name_table: [u8; 0x1000], // 0x2000 - 0x2FFF
+    patterns: [[u8; 0x4000]; 2], // not necessary for emulation
+    name_table: [u8; 0x1000], // 0x2000 - 0x2FFF // 30 line by 32 sprites (960 bytes or 0x03C0)
     pallette: [u8; 0x0020], // 0x3F00 - 0x3F1F
+
+    // spraits memory not include in address space of ppu (256 bytes or 0x0100)
+    // it can contains 64 sprites by 4 byte by each sprite
+    // bytes assignment:
+    // 1. y coordinate of sprite (top-left corner)
+    // 2. sprite address in patterns array
+    // 3. sprite attributes^
+    //    7 - vertical mirroring of sprite (1 - mirror, 0 - normal)
+    //    6 - horizontal mirroring of sprite (1 - mirror, 0 - normal)
+    //    5 - priority of sprite (1 - over the background, 0 - under the background)
+    //    4, 3, 2 - unused
+    //    1, 0 - higher bits of color
+    // 4. x coordinate of sprite (top-left corner)
 
     bus: Rc<RefCell<Bus>>,
     pub skanline: u16,
@@ -53,34 +66,51 @@ impl<'a> Ppu {
         }
     }
 
-    fn update_registers(&mut self) {
-        self.controller = self.bus.borrow().read_cpu_ram(0x2000);
-        self.mask = self.bus.borrow().read_cpu_ram(0x2001);
-        self.status = self.bus.borrow().read_cpu_ram(0x2002);
-        self.oam_address = self.bus.borrow().read_cpu_ram(0x2003);
-        self.oam_data = self.bus.borrow().read_cpu_ram(0x2004);
-        self.scroll = self.bus.borrow().read_cpu_ram(0x2005);
-        self.address = self.bus.borrow().read_cpu_ram(0x2006);
-        self.data = self.bus.borrow().read_cpu_ram(0x2007);
+    pub fn read_cpu(&self, address: u16) {
+        let address = address | 0x2000;
+        let data = self.bus.as_ref().borrow().read_cpu_ram(address);
+        match address {
+            0x2000 => (),
+            0x2001 => (),
+            0x2002 => (),
+            0x2003 => (),
+            0x2004 => (),
+            0x2005 => (),
+            0x2006 => (),
+            0x2007 => (),
+            _ => panic!("wrong addres when ppu try read registers from cpu ram"),
+        };
     }
 
-    pub fn clock(&mut self) -> Option<u32> {
-        self.cycle += 1;
-        if self.cycle == 257 {
-            self.skanline += 1;
-            self.cycle = 0;
-        }
-        if self.skanline == 241 && self.cycle == 1 {
-            self.nmi_require = true;
-        }
-        if self.skanline == 242 {
-            self.skanline = 0;
-        }
-        if rand::random() {
-            Some(0xFFFFFF)
-        } else {
-            Some(0)
-        }
+    pub fn write_cpu(&self, address: u16, data: u8) {
+        let address = address | 0x2000;
+        match address {
+            0x2000 => (),
+            0x2001 => (),
+            0x2002 => (),
+            0x2003 => (),
+            0x2004 => (),
+            0x2005 => (),
+            0x2006 => (),
+            0x2007 => (),
+            _ => panic!("wrong addres when ppu try wryte registers to cpu ram"),
+        };
+    }
+
+    fn read_from_cartridge(&self, address: u16) -> u8 {
+        self.bus.as_ref().borrow().read_chr_from_cartridge(address)
+    }
+
+    pub fn get_pattern_table(&self, table: u8) -> [u8; 0x4000] {
+        self.patterns[table as usize]
+    }
+
+    pub fn nmi_require(&self) -> bool {
+        self.nmi_require
+    }
+
+    pub fn reset_nmi(&mut self) {
+        self.nmi_require = false;
     }
 
     pub fn read_all_sprites(&mut self, table: u8) {
@@ -102,19 +132,29 @@ impl<'a> Ppu {
         }
     }
 
-    pub fn get_pattern_table(&self, table: u8) -> [u8; 0x4000] {
-        self.patterns[table as usize]
-    }
-
-    pub fn nmi_require(&self) -> bool {
-        self.nmi_require
-    }
-
-    pub fn reset_nmi(&mut self) {
-        self.nmi_require = false;
-    }
-
-    fn read_from_cartridge(&self, address: u16) -> u8 {
-        self.bus.as_ref().borrow().read_ppu(address)
+    pub fn clock(&mut self) -> Option<u32> {
+        let color = if (self.cycle == 0 && self.skanline < 240) || (self.cycle < 256 && self.skanline == 239) {
+            Some(0)
+        } else if (self.cycle > 0 && self.cycle < 256) && self.skanline < 240 {
+            if rand::random() {
+                Some(0xFFFFFF)
+            } else {
+                Some(0)
+            }
+        } else {
+            None
+        };
+        self.cycle += 1;
+        if self.cycle == 257 {
+            self.skanline += 1;
+            self.cycle = 0;
+        }
+        if self.skanline == 241 && self.cycle == 1 {
+            self.nmi_require = true;
+        }
+        if self.skanline == 242 {
+            self.skanline = 0;
+        }
+        color
     }
 }
