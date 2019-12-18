@@ -85,7 +85,7 @@ fn main() {
     let  (mut recource_holder, canvas) = RecourceHolder::init(pixel_size);
     let mut screen = Screen::new(&mut recource_holder, canvas, pixel_size);
 
-    let cart = Cartridge::new("Test.nes");
+    let cart = Cartridge::new("Donkey_Kong.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
@@ -135,27 +135,24 @@ fn main() {
         }
 
         if auto {
-            while !device.ppu.nmi_require() {
+            while !device.ppu.frame_complete() {
                 match device.clock() {
                     Some(color) => screen.set_point_at_main_area(color),
                     None => (),
                 }
             }
-            if device.ppu.nmi_require() {
-                screen.update();
-                device.cpu.nmi();
-                device.ppu.reset_nmi();
-            }
+            screen.update();
+            device.ppu.reset_frame_complete_status();
+            device.cpu.reset_complete_status();
         } else if manual_clock {
-            match device.clock() {
-                Some(color) => screen.set_point_at_main_area(color),
-                None => (),
+            while !device.cpu.clock_is_complete() {
+                match device.clock() {
+                    Some(color) => screen.set_point_at_main_area(color),
+                    None => (),
+                }
             }
             screen.update();
-            if device.ppu.nmi_require() {
-                device.cpu.nmi();
-                device.ppu.reset_nmi();
-            }
+            device.cpu.reset_complete_status();
             manual_clock = false;
         }
     }

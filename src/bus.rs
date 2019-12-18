@@ -6,7 +6,7 @@ use crate::program::Cartridge;
 
 pub struct Bus {
     cpu_ram: [u8; 0x0800],
-    ppu_registers: [u8; 8],
+    pub ppu_registers: [u8; 8],
     cartridge: Option<Rc<RefCell<Cartridge>>>,
 }
 
@@ -21,7 +21,6 @@ impl Bus {
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
         self.cartridge = Some(cartridge);
-        self.ppu_registers[0x02] = 0x80;
         println!("cartridge insert");
     }
 

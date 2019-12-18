@@ -4,10 +4,21 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use crate::bus::Bus;
 
+struct Register {
+    address: u16,
+    data: u8,
+}
+
+impl Register {
+    fn new(address: u16) -> Register {
+        Register { address, data: 0x00 }
+    }
+}
+
 pub struct Ppu {
     pallette_colors: [u32; 0x40],
     patterns: [[u8; 0x4000]; 2], // not necessary for emulation
-    name_table: [u8; 0x1000], // 0x2000 - 0x2FFF // 30 line by 32 sprites (960 bytes or 0x03C0)
+    name_table: [u8; 0x1000], // 0x2000 - 0x2FFF // (30 line by 32 sprites (960 bytes or 0x03C0) and 2 line with collor) * 4
     pallette: [u8; 0x0020], // 0x3F00 - 0x3F1F
 
     // spraits memory not include in address space of ppu (256 bytes or 0x0100)
@@ -24,18 +35,19 @@ pub struct Ppu {
     // 4. x coordinate of sprite (top-left corner)
 
     bus: Rc<RefCell<Bus>>,
-    pub skanline: u16,
+    pub skanline: i16,
     pub cycle: u16,
+    frame_complete: bool,
     nmi_require: bool,
     // Registers
-    controller:  u8, // 0x2000
-    mask:        u8, // 0x2001
-    status:      u8, // 0x2002
-    oam_address: u8, // 0x2003
-    oam_data:    u8, // 0x2004
-    scroll:      u8, // 0x2005
-    address:     u8, // 0x2006
-    data:        u8, // 0x2007
+    controller:  Register, // 0x2000
+    mask:        Register, // 0x2001
+    status:      Register, // 0x2002
+    oam_address: Register, // 0x2003
+    oam_data:    Register, // 0x2004
+    scroll:      Register, // 0x2005
+    address:     Register, // 0x2006
+    data:        Register, // 0x2007
 }
 
 impl<'a> Ppu {
@@ -52,23 +64,24 @@ impl<'a> Ppu {
             name_table: [0; 0x1000],
             pallette: [0; 0x0020],
             bus,
-            skanline:    0,
+            skanline:    -1,
             cycle:       0,
+            frame_complete: false,
             nmi_require: false,
-            controller:  0,
-            mask:        0,
-            status:      0,
-            oam_address: 0,
-            oam_data:    0,
-            scroll:      0,
-            address:     0,
-            data:        0,
+            controller:  Register::new(0x2000),
+            mask:        Register::new(0x2001),
+            status:      Register::new(0x2002),
+            oam_address: Register::new(0x2003),
+            oam_data:    Register::new(0x2004),
+            scroll:      Register::new(0x2005),
+            address:     Register::new(0x2006),
+            data:        Register::new(0x2007),
         }
     }
 
-    pub fn read_cpu(&self, address: u16) {
-        let address = address | 0x2000;
-        let data = self.bus.as_ref().borrow().read_cpu_ram(address);
+    fn read_cpu(&self, register: &mut Register) {
+        let address = register.address;
+        register.data = self.bus.as_ref().borrow().read_cpu_ram(address);
         match address {
             0x2000 => (),
             0x2001 => (),
@@ -82,12 +95,14 @@ impl<'a> Ppu {
         };
     }
 
-    pub fn write_cpu(&self, address: u16, data: u8) {
-        let address = address | 0x2000;
+    fn write_cpu(&mut self, address: u16, data: u8) {
         match address {
             0x2000 => (),
             0x2001 => (),
-            0x2002 => (),
+            0x2002 => {
+                self.status.data = data;
+                self.bus.as_ref().borrow_mut().write_cpu_ram(self.status.address, data);
+            },
             0x2003 => (),
             0x2004 => (),
             0x2005 => (),
@@ -95,6 +110,14 @@ impl<'a> Ppu {
             0x2007 => (),
             _ => panic!("wrong addres when ppu try wryte registers to cpu ram"),
         };
+    }
+
+    pub fn read_ppu(&self, address: u16) -> u8 {
+        0
+    }
+
+    pub fn write_ppu(&mut self, address: u16, data: u8) {
+
     }
 
     fn read_from_cartridge(&self, address: u16) -> u8 {
@@ -105,8 +128,12 @@ impl<'a> Ppu {
         self.patterns[table as usize]
     }
 
-    pub fn nmi_require(&self) -> bool {
-        self.nmi_require
+    pub fn reset_frame_complete_status(&mut self) {
+        self.frame_complete = false;
+    }
+
+    pub fn frame_complete(&self) -> bool {
+        self.frame_complete
     }
 
     pub fn reset_nmi(&mut self) {
@@ -133,6 +160,14 @@ impl<'a> Ppu {
     }
 
     pub fn clock(&mut self) -> Option<u32> {
+        if self.skanline == 241 && self.cycle == 1 {
+            self.write_cpu(self.status.address, self.status.data | 0x80);
+        }
+        if self.skanline == -1 && self.cycle == 1 {
+            self.frame_complete = false;
+            self.status.data &= !0x80;
+            self.write_cpu(self.status.address, self.status.data & !0x80);
+        }
         let color = if (self.cycle == 0 && self.skanline < 240) || (self.cycle < 256 && self.skanline == 239) {
             Some(0)
         } else if (self.cycle > 0 && self.cycle < 256) && self.skanline < 240 {
@@ -145,15 +180,13 @@ impl<'a> Ppu {
             None
         };
         self.cycle += 1;
-        if self.cycle == 257 {
-            self.skanline += 1;
+        if self.cycle >= 341 {
             self.cycle = 0;
-        }
-        if self.skanline == 241 && self.cycle == 1 {
-            self.nmi_require = true;
-        }
-        if self.skanline == 242 {
-            self.skanline = 0;
+            self.skanline += 1;
+            if self.skanline >= 262 {
+                self.skanline = -1;
+                self.frame_complete = true;
+            }
         }
         color
     }
