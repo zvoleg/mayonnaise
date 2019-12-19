@@ -18,7 +18,11 @@ impl Register {
 pub struct Ppu {
     pallette_colors: [u32; 0x40],
     patterns: [[u8; 0x4000]; 2], // not necessary for emulation
-    name_table: [u8; 0x1000], // 0x2000 - 0x2FFF // (30 line by 32 sprites (960 bytes or 0x03C0) and 2 line with collor) * 4
+
+    // 0x2000 - 0x2FFF // (30 line by 32 sprites (960 bytes or 0x03C0) and 2 line with collor) * 4 name-table
+    // 2 name-table stores on device and 2 can stores on cartridge
+    // each name table take 1kb (0x0400) of memory
+    name_table: [u8; 0x0800],
     pallette: [u8; 0x0020], // 0x3F00 - 0x3F1F
 
     // spraits memory not include in address space of ppu (256 bytes or 0x0100)
@@ -61,7 +65,7 @@ impl<'a> Ppu {
         Ppu {
             pallette_colors,
             patterns: [[0; 0x4000]; 2],
-            name_table: [0; 0x1000],
+            name_table: [0; 0x0800],
             pallette: [0; 0x0020],
             bus,
             skanline:    -1,
@@ -164,7 +168,6 @@ impl<'a> Ppu {
             self.write_cpu(self.status.address, self.status.data | 0x80);
         }
         if self.skanline == -1 && self.cycle == 1 {
-            self.frame_complete = false;
             self.status.data &= !0x80;
             self.write_cpu(self.status.address, self.status.data & !0x80);
         }

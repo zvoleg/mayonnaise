@@ -200,10 +200,9 @@ impl Emu6502 {
     }
 
     fn fetch(&mut self) -> u8 {
-        let acc_ptr = &OPCODES[0x0A].addressing_mode;
-        let imp_ptr = &OPCODES[0x00].addressing_mode;
-        let addressing_mode_ptr = &OPCODES[self.opcode as usize].addressing_mode;
-        if !std::ptr::eq(addressing_mode_ptr, acc_ptr) && !std::ptr::eq(addressing_mode_ptr, imp_ptr) {
+        let addressing_mode_name = &OPCODES[self.opcode as usize].addressing_mode_name;
+        if addressing_mode_name.trim() != "ACC" &&
+            addressing_mode_name.trim() != "IMP" {
             self.fetched_data = self.read_data(self.address);
         }
         self.fetched_data

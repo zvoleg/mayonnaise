@@ -129,6 +129,21 @@ fn main() {
                             Err(_)  => println!("index must be in hex format"),
                         }
                     }
+                    if keycode.unwrap() == Keycode::S {
+                        let mut input = String::new();
+                        stdout().flush().unwrap();
+                        stdin().read_line(&mut input).unwrap();
+                        let mut address = 0;
+                        let mut data = 0;
+                        for (i, part) in input.split_whitespace().enumerate() {
+                            match i {
+                                0 => address = u16::from_str_radix(part.trim(), 16).unwrap(),
+                                1 => data = u8::from_str_radix(part.trim(), 16).unwrap(),
+                                _ => ()
+                            }
+                        }
+                        device.bus.as_ref().borrow_mut().write_cpu_ram(address, data);
+                    }
                 },
                 _ => ()
             }
