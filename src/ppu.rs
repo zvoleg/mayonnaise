@@ -14,6 +14,16 @@ impl Register {
     }
 }
 
+struct Register16 {
+    data: u16,
+}
+
+impl Register16 {
+    fn new() -> Register16 {
+        Register16 { data: 0x00 }
+    }
+}
+
 pub struct Ppu {
     pallette_colors: [u32; 0x40],
     patterns: [[u8; 0x4000]; 2], // not necessary for emulation
@@ -38,11 +48,17 @@ pub struct Ppu {
     // 4. x coordinate of sprite (top-left corner)
 
     bus: Rc<RefCell<Bus>>,
+
     pub skanline: i16,
-    pub cycle: u16,
+    pub cycle:    u16,
+
+    latch:             bool,
+    high_address_byte: u8,
+    low_address_byte:  u8,
+
     frame_complete: bool,
-    vblank: bool,
-    nmi_require:bool,
+    vblank:         bool,
+    nmi_require:    bool,
     // Registers
     control:     Register, // 0x2000
     mask:        Register, // 0x2001
@@ -50,7 +66,7 @@ pub struct Ppu {
     oam_address: Register, // 0x2003
     oam_data:    Register, // 0x2004
     scroll:      Register, // 0x2005
-    address:     Register, // 0x2006
+    address:     Register16, // 0x2006
     data:        Register, // 0x2007
 }
 
@@ -64,23 +80,31 @@ impl<'a> Ppu {
         ];
         Ppu {
             pallette_colors,
-            patterns: [[0; 0x4000]; 2],
+            patterns:   [[0; 0x4000]; 2],
             name_table: [0; 0x0800],
-            pallette: [0; 0x0020],
+            pallette:   [0; 0x0020],
+
             bus,
-            skanline:    -1,
-            cycle:       0,
-            frame_complete: false,
-            vblank: false,
-            nmi_require: false,
-            control:     Register::new(),
-            mask:        Register::new(),
-            status:      Register::new(),
-            oam_address: Register::new(),
-            oam_data:    Register::new(),
-            scroll:      Register::new(),
-            address:     Register::new(),
-            data:        Register::new(),
+            
+            skanline:         -1,
+            cycle:             0,
+            
+            latch:             false,
+            high_address_byte: 0,
+            low_address_byte:  0,
+            
+            frame_complete:    false,
+            vblank:            false,
+            nmi_require:       false,
+            
+            control:           Register::new(),
+            mask:              Register::new(),
+            status:            Register::new(),
+            oam_address:       Register::new(),
+            oam_data:          Register::new(),
+            scroll:            Register::new(),
+            address:           Register16::new(),
+            data:              Register::new(),
         }
     }
 
@@ -92,12 +116,15 @@ impl<'a> Ppu {
             0x0002 => {
                 data = self.status.data;
                 self.status.data &= !0x80;
+                self.latch = false;
             },
             0x0003 => (),
             0x0004 => (),
             0x0005 => (),
             0x0006 => (),
-            0x0007 => (),
+            0x0007 => {
+                data = self.data.data;
+            },
             _ => panic!("wrong addres when cpu try read ppu registers"),
         };
         data
@@ -124,7 +151,16 @@ impl<'a> Ppu {
             },
             0x0004 => (),
             0x0005 => (),
-            0x0006 => (),
+            0x0006 => {
+                if !self.latch {
+                    self.high_address_byte = data;
+                    self.latch = true;
+                } else {
+                    self.low_address_byte = data;
+                    self.latch = false;
+                    self.address.data = ((self.high_address_byte as u16) << 8) | self.low_address_byte as u16
+                }
+            },
             0x0007 => (),
             _ => panic!("wrong addres when cpu try wryte ppu registers"),
         };
