@@ -75,8 +75,7 @@ impl Device {
             self.cpu.nmi();
             self.ppu.borrow_mut().reset_nmi_require();
         }
-        let (res, _) = self.clock_counter.overflowing_add(1);
-        self.clock_counter = res;
+        self.clock_counter = self.clock_counter.overflowing_add(1).0;
         if self.clock_counter % 3 == 0 {
             self.cpu.clock();
         }
@@ -100,7 +99,10 @@ fn main() {
         }
     }
 
+    screen.update();
+
     let mut auto = false;
+    let mut by_frame = false;
     let mut manual_clock = false;
     let mut event_pump = screen.get_events();
     'lock: loop {
@@ -116,6 +118,9 @@ fn main() {
                     if keycode.unwrap() == Keycode::A {
                         auto = !auto;
                         println!("auto mode: {}", auto);
+                    }
+                    if keycode.unwrap() == Keycode::F {
+                        by_frame = true;
                     }
                     if keycode.unwrap() == Keycode::R {
                         device.cpu.reset();
@@ -160,6 +165,17 @@ fn main() {
                     None => (),
                 }
             }
+            screen.update();
+            device.ppu.borrow_mut().reset_frame_complete_status();
+            device.cpu.reset_complete_status();
+        } else if by_frame {
+            while !device.ppu.borrow().frame_complete() {
+                match device.clock() {
+                    Some(color) => screen.set_point_at_main_area(color),
+                    None => (),
+                }
+            }
+            by_frame = false;
             screen.update();
             device.ppu.borrow_mut().reset_frame_complete_status();
             device.cpu.reset_complete_status();

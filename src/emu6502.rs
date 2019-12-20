@@ -210,7 +210,7 @@ impl Emu6502 {
 
     fn branching_instruction(&mut self) {
         self.cycle_counter += 1;
-        let (new_prog_counter, _overflow) = self.prog_counter.overflowing_add(self.addr_offset);
+        let new_prog_counter = self.prog_counter.overflowing_add(self.addr_offset).0;
         if (new_prog_counter & 0xFF00) != (self.prog_counter & 0xFF00) {
             self.cycle_counter += 1;
         }
@@ -244,8 +244,7 @@ impl Emu6502 {
         let high = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let base_address = ((high as u16) << 8) | low as u16;
-        let (result_address, _overflow) = base_address.overflowing_add(self.x as u16);
-        self.address = result_address;
+        self.address = base_address.overflowing_add(self.x as u16).0;
         if (self.address & 0xFF00) != ((high as u16) << 8) {
             self.additional_cycles = 1;
         }
@@ -257,8 +256,7 @@ impl Emu6502 {
         let high = self.read_data(self.prog_counter);
         self.prog_counter += 1;
         let base_address = ((high as u16) << 8) | low as u16;
-        let (result_address, _overflow) = base_address.overflowing_add(self.y as u16);
-        self.address = result_address;
+        self.address = base_address.overflowing_add(self.y as u16).0;
         if (self.address & 0xFF00) != ((high as u16) << 8) {
             self.additional_cycles = 1;
         }
@@ -273,15 +271,13 @@ impl Emu6502 {
     fn ZPX(&mut self) {
         let base_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let (low, _overflow) = base_low.overflowing_add(self.x);
-        self.address = low as u16;
+        self.address = base_low.overflowing_add(self.x).0 as u16;
     }
 
     fn ZPY(&mut self) {
         let base_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let (low, _overflow) = base_low.overflowing_add(self.y);
-        self.address = low as u16;
+        self.address = base_low.overflowing_add(self.y).0 as u16;
     }
 
     fn IND(&mut self) {
@@ -298,22 +294,22 @@ impl Emu6502 {
     fn IDX(&mut self) {
         let base_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let (indirect_low, _overflow) = base_low.overflowing_add(self.x);
-        let low = self.read_data(indirect_low as u16);
-        let (indirect_high, _overflow) = indirect_low.overflowing_add(1);
-        let high = self.read_data(indirect_high as u16);
+        let indirect_low = base_low.overflowing_add(self.x).0 as u16;
+        let indirect_high = indirect_low.overflowing_add(1).0;
+        let low = self.read_data(indirect_low);
+        let high = self.read_data(indirect_high);
         self.address = ((high as u16) << 8) | low as u16;
     }
 
     fn IDY(&mut self) {
-        let indirect_low = self.read_data(self.prog_counter);
+        let zero_page_addr = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let (next_byte, _overflow) = indirect_low.overflowing_add(1);
-        let indirect_high = self.read_data(next_byte as u16);
-        let result_address = ((indirect_high as u16) << 8) | indirect_low as u16;
-        let (result_address, _overflow) = result_address.overflowing_add(self.y as u16);
-        self.address = result_address;
-        if (self.address & 0xFF00) != ((indirect_high as u16) << 8) {
+        let next_byte = zero_page_addr.overflowing_add(1).0 as u16;
+        let low = self.read_data(zero_page_addr as u16);
+        let high = self.read_data(next_byte);
+        let result_address = ((high as u16) << 8) | low as u16;
+        self.address = result_address.overflowing_add(self.y as u16).0;
+        if (self.address & 0xFF00) != ((high as u16) << 8) {
             self.additional_cycles = 1;
         }
     }
@@ -343,7 +339,7 @@ impl Emu6502 {
 
     fn ADC(&mut self) { // add with carry
         self.cycle_counter += self.additional_cycles;
-        let (add_value, _overflow) = self.fetch().overflowing_add(self.get_flag(Flag::C));
+        let add_value = self.fetch().overflowing_add(self.get_flag(Flag::C)).0;
         let (result, overflow) = self.acc.overflowing_add(add_value);
         self.set_flag(Flag::C, overflow);
         self.set_flag(Flag::V, overflow);
@@ -468,8 +464,8 @@ impl Emu6502 {
     fn CMP(&mut self) { // compare accumulator to memory
         self.cycle_counter += self.additional_cycles;
         self.fetch();
-        let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
-        let (result, _overflow) = self.acc.overflowing_add(invert_fetched_data);
+        let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
+        let result = self.acc.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.acc & 0x80));
@@ -506,37 +502,33 @@ impl Emu6502 {
     }
 
     fn INX(&mut self) { // increment x register
-        let (result, _overflow) = self.x.overflowing_add(1);
-        self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::Z, result == 0);
-        self.x = result;
+        self.x = self.x.overflowing_add(1).0;
+        self.set_flag(Flag::S, self.x & 0x80 != 0);
+        self.set_flag(Flag::Z, self.x == 0);
     }
 
     fn INY(&mut self) { // increment y register
-        let (result, _overflow) = self.y.overflowing_add(1);
-        self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::Z, result == 0);
-        self.y = result;
+        self.y = self.y.overflowing_add(1).0;
+        self.set_flag(Flag::S, self.y & 0x80 != 0);
+        self.set_flag(Flag::Z, self.y == 0);
     }
 
     fn DEX(&mut self) { // decrement x register
-        let (result, _overflow) = self.x.overflowing_sub(1);
-        self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::Z, result == 0);
-        self.x = result;
+        self.x = self.x.overflowing_sub(1).0;
+        self.set_flag(Flag::S, self.x & 0x80 != 0);
+        self.set_flag(Flag::Z, self.x == 0);
     }
 
     fn DEY(&mut self) { // decrement y register
-        let (result, _overflow) = self.y.overflowing_sub(1);
-        self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::Z, result == 0);
-        self.y = result;
+        self.y = self.y.overflowing_sub(1).0;
+        self.set_flag(Flag::S, self.y & 0x80 != 0);
+        self.set_flag(Flag::Z, self.y == 0);
     }
 
     fn CPX(&mut self) { // compare x to memory
         self.fetch();
-        let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
-        let (result, _overflow) = self.x.overflowing_add(invert_fetched_data);
+        let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
+        let result = self.x.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.x & 0x80));
@@ -544,8 +536,8 @@ impl Emu6502 {
 
     fn CPY(&mut self) { // compare y to memory
         self.fetch();
-        let (invert_fetched_data, _overflow) = (!self.fetched_data).overflowing_add(1);
-        let (result, _overflow) = self.y.overflowing_add(invert_fetched_data);
+        let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
+        let result = self.y.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.y & 0x80));
@@ -674,14 +666,14 @@ impl Emu6502 {
     }
 
     fn INC(&mut self) { // increment memory by one
-        let (result, _overflow) = self.fetch().overflowing_add(1);
+        let result = self.fetch().overflowing_add(1).0;
         self.write_data(result);
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, (result & 0x80) != 0);
     }
 
     fn DEC(&mut self) { // decrement memory by one
-        let (result, _overflow) = self.fetch().overflowing_sub(1);
+        let result = self.fetch().overflowing_sub(1).0;
         self.write_data(result);
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, (result & 0x80) != 0);
