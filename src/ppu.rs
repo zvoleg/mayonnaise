@@ -85,18 +85,18 @@ impl<'a> Ppu {
             pallette:   [0; 0x0020],
 
             bus,
-            
+
             skanline:         -1,
             cycle:             0,
-            
+
             latch:             false,
             high_address_byte: 0,
             low_address_byte:  0,
-            
+
             frame_complete:    false,
             vblank:            false,
             nmi_require:       false,
-            
+
             control:           Register::new(),
             mask:              Register::new(),
             status:            Register::new(),
@@ -123,7 +123,12 @@ impl<'a> Ppu {
             0x0005 => (),
             0x0006 => (),
             0x0007 => {
-                data = self.data.data;
+                // data = self.name_table[(self.address.data & 0x07FF) as usize]; <- it is wrong, need implementation read/wripte of ppu memory
+                let increment = match self.control.data & 0x04 != 0 {
+                    true => 32,
+                    false => 1,
+                };
+                self.address.data = self.address.data.overflowing_add(increment).0;
             },
             _ => panic!("wrong addres when cpu try read ppu registers"),
         };
@@ -161,7 +166,15 @@ impl<'a> Ppu {
                     self.address.data = ((self.high_address_byte as u16) << 8) | self.low_address_byte as u16
                 }
             },
-            0x0007 => (),
+            0x0007 => {
+                self.data.data = data;
+                // self.name_table[(self.address.data & 0x07FF) as usize] = self.data.data; <- it is wrong, need implementation read/wripte of ppu memory
+                let increment = match self.control.data & 0x04 != 0 {
+                    true => 32,
+                    false => 1,
+                };
+                self.address.data = self.address.data.overflowing_add(increment).0;
+            },
             _ => panic!("wrong addres when cpu try wryte ppu registers"),
         };
     }
