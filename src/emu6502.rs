@@ -105,25 +105,25 @@ impl Emu6502 {
             self.opcode = self.read_data(self.prog_counter);
             let op = &OPCODES[self.opcode as usize];
 
-            print!(
-                "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode {:02X}: {} {} ",
-                self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
-                self.opcode, op.instruction_name, op.addressing_mode_name
-            );
+            // print!(
+            //     "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode {:02X}: {} {} ",
+            //     self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
+            //     self.opcode, op.instruction_name, op.addressing_mode_name
+            // );
 
             self.prog_counter += 1;
             (op.addressing_mode)(self);
 
-            if op.instruction_name.chars().next().unwrap() == 'B'
-                && op.instruction_name != "BIT"
-                && op.instruction_name != "BRK"
-            {
-                println!("{}", self.addr_offset as i16);
-            } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
-                println!("");
-            } else {
-                println!("{:04X} = {:02X}", self.address, self.read_data(self.address));
-            }
+            // if op.instruction_name.chars().next().unwrap() == 'B'
+            //     && op.instruction_name != "BIT"
+            //     && op.instruction_name != "BRK"
+            // {
+            //     println!("{}", self.addr_offset as i16);
+            // } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
+            //     println!("");
+            // } else {
+            //     println!("{:04X}", self.address);
+            // }
 
             (op.instruction)(self);
             self.cycle_counter = op.cycle_amount;
@@ -310,8 +310,8 @@ impl Emu6502 {
         self.prog_counter += 1;
         let (next_byte, _overflow) = indirect_low.overflowing_add(1);
         let indirect_high = self.read_data(next_byte as u16);
-        let mut result_address = ((indirect_high as u16) << 8) | indirect_low as u16;
-        result_address += self.y as u16;
+        let result_address = ((indirect_high as u16) << 8) | indirect_low as u16;
+        let (result_address, _overflow) = result_address.overflowing_add(self.y as u16);
         self.address = result_address;
         if (self.address & 0xFF00) != ((indirect_high as u16) << 8) {
             self.additional_cycles = 1;
@@ -343,7 +343,8 @@ impl Emu6502 {
 
     fn ADC(&mut self) { // add with carry
         self.cycle_counter += self.additional_cycles;
-        let (result, overflow) = self.acc.overflowing_add(self.fetch() + self.get_flag(Flag::C));
+        let (add_value, _overflow) = self.fetch().overflowing_add(self.get_flag(Flag::C));
+        let (result, overflow) = self.acc.overflowing_add(add_value);
         self.set_flag(Flag::C, overflow);
         self.set_flag(Flag::V, overflow);
         self.set_flag(Flag::S, result & 0x80 != 0);

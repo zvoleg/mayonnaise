@@ -2,7 +2,6 @@ extern crate sdl2;
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::ops::Deref;
 use std::io::{stdin, stdout, Write};
 
 use sdl2::event::Event;
@@ -16,7 +15,7 @@ use emu::environment::{RecourceHolder, Screen};
 
 struct Device {
     cpu: Emu6502,
-    ppu: Ppu,
+    ppu: Rc<RefCell<Ppu>>,
     bus: Rc<RefCell<Bus>>,
     clock_counter: u32,
 }
@@ -25,7 +24,8 @@ impl Device {
     fn new () -> Device {
         let bus = Rc::new(RefCell::new(Bus::new()));
         let cpu = Emu6502::new(bus.clone());
-        let ppu = Ppu::new(bus.clone());
+        let ppu = Rc::new(RefCell::new(Ppu::new(bus.clone())));
+        bus.borrow_mut().connect_ppu(ppu.clone());
         Device {
             cpu,
             ppu,
@@ -35,10 +35,10 @@ impl Device {
     }
 
     fn insert_cartridge(&mut self, cartridge: Cartridge) {
-        self.bus.deref().borrow_mut().insert_cartridge(Rc::new(RefCell::new(cartridge)));
+        self.bus.borrow_mut().insert_cartridge(Rc::new(RefCell::new(cartridge)));
         self.cpu.reset();
-        self.ppu.read_all_sprites(0);
-        self.ppu.read_all_sprites(1);
+        self.ppu.borrow_mut().read_all_sprites(0);
+        self.ppu.borrow_mut().read_all_sprites(1);
     }
 
     fn print_memory_dump(&self) {
@@ -54,12 +54,12 @@ impl Device {
             } else {
                 print!("   ");
             }
-            println!("{:04X} - {:02X}", i, self.bus.deref().borrow_mut().read_cpu_ram(i));
+            println!("{:04X} - {:02X}", i, self.bus.borrow_mut().read_cpu_ram(i));
         }
     }
 
     fn read_pixel_pattern_table(&self, idx: usize, table: u8) -> u32 {
-        let pattern = &self.ppu.get_pattern_table(table);
+        let pattern = &self.ppu.borrow().get_pattern_table(table);
         match pattern[idx] {
             0 => 0x222222,
             1 => 0x5555AA,
@@ -70,7 +70,11 @@ impl Device {
     }
 
     fn clock(&mut self) -> Option<u32> {
-        let color = self.ppu.clock();
+        let color = self.ppu.borrow_mut().clock();
+        if self.ppu.borrow().nmi_require() {
+            self.cpu.nmi();
+            self.ppu.borrow_mut().reset_nmi_require();
+        }
         let (res, _) = self.clock_counter.overflowing_add(1);
         self.clock_counter = res;
         if self.clock_counter % 3 == 0 {
@@ -142,7 +146,7 @@ fn main() {
                                 _ => ()
                             }
                         }
-                        device.bus.as_ref().borrow_mut().write_cpu_ram(address, data);
+                        device.bus.borrow_mut().write_cpu_ram(address, data);
                     }
                 },
                 _ => ()
@@ -150,14 +154,14 @@ fn main() {
         }
 
         if auto {
-            while !device.ppu.frame_complete() {
+            while !device.ppu.borrow().frame_complete() {
                 match device.clock() {
                     Some(color) => screen.set_point_at_main_area(color),
                     None => (),
                 }
             }
             screen.update();
-            device.ppu.reset_frame_complete_status();
+            device.ppu.borrow_mut().reset_frame_complete_status();
             device.cpu.reset_complete_status();
         } else if manual_clock {
             while !device.cpu.clock_is_complete() {

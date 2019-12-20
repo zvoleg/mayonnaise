@@ -5,13 +5,12 @@ use std::cell::RefCell;
 use crate::bus::Bus;
 
 struct Register {
-    address: u16,
     data: u8,
 }
 
 impl Register {
-    fn new(address: u16) -> Register {
-        Register { address, data: 0x00 }
+    fn new() -> Register {
+        Register { data: 0x00 }
     }
 }
 
@@ -42,9 +41,10 @@ pub struct Ppu {
     pub skanline: i16,
     pub cycle: u16,
     frame_complete: bool,
-    nmi_require: bool,
+    vblank: bool,
+    nmi_require:bool,
     // Registers
-    controller:  Register, // 0x2000
+    control:     Register, // 0x2000
     mask:        Register, // 0x2001
     status:      Register, // 0x2002
     oam_address: Register, // 0x2003
@@ -71,48 +71,62 @@ impl<'a> Ppu {
             skanline:    -1,
             cycle:       0,
             frame_complete: false,
+            vblank: false,
             nmi_require: false,
-            controller:  Register::new(0x2000),
-            mask:        Register::new(0x2001),
-            status:      Register::new(0x2002),
-            oam_address: Register::new(0x2003),
-            oam_data:    Register::new(0x2004),
-            scroll:      Register::new(0x2005),
-            address:     Register::new(0x2006),
-            data:        Register::new(0x2007),
+            control:     Register::new(),
+            mask:        Register::new(),
+            status:      Register::new(),
+            oam_address: Register::new(),
+            oam_data:    Register::new(),
+            scroll:      Register::new(),
+            address:     Register::new(),
+            data:        Register::new(),
         }
     }
 
-    fn read_cpu(&self, register: &mut Register) {
-        let address = register.address;
-        register.data = self.bus.as_ref().borrow().read_cpu_ram(address);
+    pub fn cpu_read(&mut self, address: u16) -> u8 {
+        let mut data = 0;
         match address {
-            0x2000 => (),
-            0x2001 => (),
-            0x2002 => (),
-            0x2003 => (),
-            0x2004 => (),
-            0x2005 => (),
-            0x2006 => (),
-            0x2007 => (),
-            _ => panic!("wrong addres when ppu try read registers from cpu ram"),
+            0x0000 => (),
+            0x0001 => (),
+            0x0002 => {
+                data = self.status.data;
+                self.status.data &= !0x80;
+            },
+            0x0003 => (),
+            0x0004 => (),
+            0x0005 => (),
+            0x0006 => (),
+            0x0007 => (),
+            _ => panic!("wrong addres when cpu try read ppu registers"),
         };
+        data
     }
 
-    fn write_cpu(&mut self, address: u16, data: u8) {
+    pub fn cpu_write(&mut self, address: u16, data: u8) {
         match address {
-            0x2000 => (),
-            0x2001 => (),
-            0x2002 => {
-                self.status.data = data;
-                self.bus.as_ref().borrow_mut().write_cpu_ram(self.status.address, data);
+            0x0000 => {
+                let old_nmi_status = self.control.data & 0x80;
+                self.control.data = data;
+                if self.vblank &&
+                    self.status.data & 0x80 != 0 &&
+                    old_nmi_status == 0 &&
+                    self.control.data & 0x80 != 0 {
+                    self.nmi_require = true;
+                }
             },
-            0x2003 => (),
-            0x2004 => (),
-            0x2005 => (),
-            0x2006 => (),
-            0x2007 => (),
-            _ => panic!("wrong addres when ppu try wryte registers to cpu ram"),
+            0x0001 => {
+                self.mask.data = data;
+            },
+            0x0002 => (),
+            0x0003 => {
+                self.oam_address.data = data;
+            },
+            0x0004 => (),
+            0x0005 => (),
+            0x0006 => (),
+            0x0007 => (),
+            _ => panic!("wrong addres when cpu try wryte ppu registers"),
         };
     }
 
@@ -125,7 +139,7 @@ impl<'a> Ppu {
     }
 
     fn read_from_cartridge(&self, address: u16) -> u8 {
-        self.bus.as_ref().borrow().read_chr_from_cartridge(address)
+        self.bus.borrow().read_chr_from_cartridge(address)
     }
 
     pub fn get_pattern_table(&self, table: u8) -> [u8; 0x4000] {
@@ -140,7 +154,11 @@ impl<'a> Ppu {
         self.frame_complete
     }
 
-    pub fn reset_nmi(&mut self) {
+    pub fn nmi_require(&self) -> bool {
+        self.nmi_require
+    }
+
+    pub fn reset_nmi_require(&mut self) {
         self.nmi_require = false;
     }
 
@@ -165,11 +183,15 @@ impl<'a> Ppu {
 
     pub fn clock(&mut self) -> Option<u32> {
         if self.skanline == 241 && self.cycle == 1 {
-            self.write_cpu(self.status.address, self.status.data | 0x80);
+            self.status.data |= 0x80;
+            self.vblank = true;
+            if self.control.data & 0x80 != 0 {
+                self.nmi_require = true;
+            }
         }
         if self.skanline == -1 && self.cycle == 1 {
             self.status.data &= !0x80;
-            self.write_cpu(self.status.address, self.status.data & !0x80);
+            self.vblank = false;
         }
         let color = if (self.cycle == 0 && self.skanline < 240) || (self.cycle < 256 && self.skanline == 239) {
             Some(0)
