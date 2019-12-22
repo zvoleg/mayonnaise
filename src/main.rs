@@ -88,7 +88,7 @@ fn main() {
     let  (mut recource_holder, canvas) = RecourceHolder::init(pixel_size);
     let mut screen = Screen::new(&mut recource_holder, canvas, pixel_size);
 
-    let cart = Cartridge::new("Donkey_Kong.nes");
+    let cart = Cartridge::new("dk.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
@@ -125,8 +125,12 @@ fn main() {
                     if keycode.unwrap() == Keycode::R {
                         device.cpu.reset();
                     }
-                    if keycode.unwrap() == Keycode::M {
-                        device.print_memory_dump();
+                    if keycode.unwrap() == Keycode::R {
+                        device.cpu.reset();
+                    }
+                    if keycode.unwrap() == Keycode::D {
+                        let debug = device.cpu.get_debug();
+                        device.cpu.set_debug(!debug);
                     }
                     if keycode.unwrap() == Keycode::V {
                         let mut input = String::new();
@@ -152,6 +156,12 @@ fn main() {
                             }
                         }
                         device.bus.borrow_mut().write_cpu_ram(address, data);
+                    }
+                    if keycode.unwrap() == Keycode::Num1 {
+                        device.ppu.borrow().read_name_table(0);
+                    }
+                    if keycode.unwrap() == Keycode::Num2 {
+                        device.ppu.borrow().read_name_table(1);
                     }
                 },
                 _ => ()

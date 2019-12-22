@@ -4,6 +4,95 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use crate::bus::Bus;
 
+struct Control {
+    data: u8,
+}
+
+impl Control {
+    fn new(data: u8) -> Control {
+        Control { data }
+    }
+
+    fn set(&mut self, data: u8) {
+        self.data = data;
+    }
+
+    fn nmi_flag(&self) -> bool {
+        self.data & 0x80 != 0
+    }
+
+    fn get_increment(&self) -> u16 {
+        match self.data & 0x04 != 0 {
+            true => 32,
+            false => 1
+        }
+    }
+
+    fn background_table_address(&self) -> u16 {
+        match self.data & 0x10 != 0 {
+            true => 0x1000,
+            false => 0x0000
+        }
+    }
+}
+
+struct Status {
+    data: u8,
+}
+
+impl Status {
+    fn new(data: u8) -> Status {
+        Status { data }
+    }
+
+    fn in_vblank(&self) -> bool {
+        self.data & 0x80 != 0
+    }
+
+    fn set_vblank(&mut self, set: bool) {
+        match set {
+            true => self.data |= 0x80,
+            false => self.data &= !0x80
+        }
+    }
+}
+
+struct Address {
+    data: u16,
+}
+
+impl Address {
+    fn new(data: u16) -> Address {
+        Address { data }
+    }
+
+    fn set_address(&mut self, new_address: u16) {
+        self.data = new_address;
+    }
+
+    fn add_increment(&mut self, increment: u16) {
+        self.data = self.data.overflowing_add(increment).0;
+    }
+}
+
+struct Data {
+    data: u8,
+}
+
+impl Data {
+    fn new(data: u8) -> Data {
+        Data { data }
+    }
+
+    fn get(&self) -> u8 {
+        self.data
+    }
+
+    fn set(&mut self, data: u8) {
+        self.data = data;
+    }
+}
+
 struct Register {
     data: u8,
 }
@@ -11,16 +100,6 @@ struct Register {
 impl Register {
     fn new() -> Register {
         Register { data: 0x00 }
-    }
-}
-
-struct Register16 {
-    data: u16,
-}
-
-impl Register16 {
-    fn new() -> Register16 {
-        Register16 { data: 0x00 }
     }
 }
 
@@ -34,6 +113,7 @@ pub struct Ppu {
     name_table: [u8; 0x0800],
     pallette: [u8; 0x0020], // 0x3F00 - 0x3F1F
 
+    // OAM:
     // spraits memory not include in address space of ppu (256 bytes or 0x0100)
     // it can contains 64 sprites by 4 byte by each sprite
     // bytes assignment:
@@ -49,9 +129,10 @@ pub struct Ppu {
 
     bus: Rc<RefCell<Bus>>,
 
-    pub skanline: i16,
+    pub skanline: u16,
     pub cycle:    u16,
 
+    data_buffer:       u8,
     latch:             bool,
     high_address_byte: u8,
     low_address_byte:  u8,
@@ -60,14 +141,14 @@ pub struct Ppu {
     vblank:         bool,
     nmi_require:    bool,
     // Registers
-    control:     Register, // 0x2000
+    control:     Control,  // 0x2000
     mask:        Register, // 0x2001
-    status:      Register, // 0x2002
+    status:      Status,   // 0x2002
     oam_address: Register, // 0x2003
     oam_data:    Register, // 0x2004
     scroll:      Register, // 0x2005
-    address:     Register16, // 0x2006
-    data:        Register, // 0x2007
+    address:     Address,  // 0x2006
+    data:        Data,     // 0x2007
 }
 
 impl<'a> Ppu {
@@ -86,9 +167,10 @@ impl<'a> Ppu {
 
             bus,
 
-            skanline:         -1,
+            skanline:          0,
             cycle:             0,
 
+            data_buffer:       0,
             latch:             false,
             high_address_byte: 0,
             low_address_byte:  0,
@@ -97,14 +179,14 @@ impl<'a> Ppu {
             vblank:            false,
             nmi_require:       false,
 
-            control:           Register::new(),
+            control:           Control::new(0),
             mask:              Register::new(),
-            status:            Register::new(),
+            status:            Status::new(0),
             oam_address:       Register::new(),
             oam_data:          Register::new(),
             scroll:            Register::new(),
-            address:           Register16::new(),
-            data:              Register::new(),
+            address:           Address::new(0),
+            data:              Data::new(0),
         }
     }
 
@@ -115,7 +197,7 @@ impl<'a> Ppu {
             0x0001 => (),
             0x0002 => {
                 data = self.status.data;
-                self.status.data &= !0x80;
+                self.status.set_vblank(false);
                 self.latch = false;
             },
             0x0003 => (),
@@ -123,12 +205,13 @@ impl<'a> Ppu {
             0x0005 => (),
             0x0006 => (),
             0x0007 => {
-                // data = self.name_table[(self.address.data & 0x07FF) as usize]; <- it is wrong, need implementation read/wripte of ppu memory
-                let increment = match self.control.data & 0x04 != 0 {
-                    true => 32,
-                    false => 1,
-                };
-                self.address.data = self.address.data.overflowing_add(increment).0;
+                data = self.data_buffer;
+                self.data_buffer = self.read_ppu(self.address.data);
+                if self.address.data >= 0x3F00 {
+                    data = self.data_buffer;
+                }
+                let increment = self.control.get_increment();
+                self.address.add_increment(increment);
             },
             _ => panic!("wrong addres when cpu try read ppu registers"),
         };
@@ -138,12 +221,12 @@ impl<'a> Ppu {
     pub fn cpu_write(&mut self, address: u16, data: u8) {
         match address {
             0x0000 => {
-                let old_nmi_status = self.control.data & 0x80;
-                self.control.data = data;
+                let old_nmi_status = self.control.nmi_flag();
+                self.control.set(data);
                 if self.vblank &&
-                    self.status.data & 0x80 != 0 &&
-                    old_nmi_status == 0 &&
-                    self.control.data & 0x80 != 0 {
+                    self.status.in_vblank() &&
+                    !old_nmi_status &&
+                    self.control.nmi_flag() {
                     self.nmi_require = true;
                 }
             },
@@ -163,28 +246,43 @@ impl<'a> Ppu {
                 } else {
                     self.low_address_byte = data;
                     self.latch = false;
-                    self.address.data = ((self.high_address_byte as u16) << 8) | self.low_address_byte as u16
+                    self.address.set_address(((self.high_address_byte as u16) << 8) | self.low_address_byte as u16);
                 }
             },
             0x0007 => {
-                self.data.data = data;
-                // self.name_table[(self.address.data & 0x07FF) as usize] = self.data.data; <- it is wrong, need implementation read/wripte of ppu memory
-                let increment = match self.control.data & 0x04 != 0 {
-                    true => 32,
-                    false => 1,
-                };
-                self.address.data = self.address.data.overflowing_add(increment).0;
+                self.write_ppu(self.address.data, data);
+                let increment = self.control.get_increment();
+                self.address.add_increment(increment);
             },
             _ => panic!("wrong addres when cpu try wryte ppu registers"),
         };
     }
 
     pub fn read_ppu(&self, address: u16) -> u8 {
-        0
+        let mut data = 0;
+        if address < 0x2000 {
+            data = self.bus.as_ref().borrow().read_chr_from_cartridge(address);
+        } else if address >= 0x2000 && address < 0x3F00 {
+            let address = address & 0x2FFF;
+            data = self.name_table[(address & 0x07FF) as usize]; // TODO implement name table mirroring
+        } else if address >= 0x3F00 && address < 0x3FFF {
+            let address = address & 0x001F;
+            data = self.pallette[address as usize];
+        }
+        data
     }
 
     pub fn write_ppu(&mut self, address: u16, data: u8) {
-
+        // let mut data = 0;
+        if address < 0x2000 {
+            // data = self.bus.as_ref().borrow().read_chr_from_cartridge(address);
+        } else if address >= 0x2000 && address < 0x3F00 {
+            let address = address & 0x2FFF;
+            self.name_table[(address & 0x07FF) as usize] = data; // TODO implement name table mirroring
+        } else if address >= 0x3F00 && address < 0x3FFF {
+            let address = address & 0x001F;
+            self.pallette[address as usize] = data;
+        }
     }
 
     fn read_from_cartridge(&self, address: u16) -> u8 {
@@ -230,6 +328,18 @@ impl<'a> Ppu {
         }
     }
 
+    pub fn read_name_table(&self, name_table: u16) {
+        let base_addr = 0x0400 * name_table;
+        for row in 0 .. 32 {
+            for column in 0 .. 32 {
+                let offset = row * 32 + column;
+                let value = self.name_table[(base_addr + offset) as usize];
+                print!("{:02X} ", value);
+            }
+            println!("");
+        }
+    }
+
     pub fn clock(&mut self) -> Option<u32> {
         if self.skanline == 241 && self.cycle == 1 {
             self.status.data |= 0x80;
@@ -238,7 +348,7 @@ impl<'a> Ppu {
                 self.nmi_require = true;
             }
         }
-        if self.skanline == -1 && self.cycle == 1 {
+        if self.skanline == 261 && self.cycle == 1 {
             self.status.data &= !0x80;
             self.vblank = false;
         }
@@ -257,8 +367,8 @@ impl<'a> Ppu {
         if self.cycle >= 341 {
             self.cycle = 0;
             self.skanline += 1;
-            if self.skanline >= 262 {
-                self.skanline = -1;
+            if self.skanline > 261 {
+                self.skanline = 0;
                 self.frame_complete = true;
             }
         }

@@ -67,6 +67,7 @@ pub struct Emu6502 {
 
     bus: Rc<RefCell<Bus>>,
     clock_compleate: bool,
+    debug: bool,
 }
 
 
@@ -92,6 +93,7 @@ impl Emu6502 {
 
             bus: bus.clone(),
             clock_compleate: false,
+            debug: false
         }
     }
 
@@ -105,25 +107,29 @@ impl Emu6502 {
             self.opcode = self.read_data(self.prog_counter);
             let op = &OPCODES[self.opcode as usize];
 
-            // print!(
-            //     "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode {:02X}: {} {} ",
-            //     self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
-            //     self.opcode, op.instruction_name, op.addressing_mode_name
-            // );
+            if self.debug {
+                print!(
+                    "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode {:02X}: {} {} ",
+                    self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
+                    self.opcode, op.instruction_name, op.addressing_mode_name
+                );
+            }
 
             self.prog_counter += 1;
             (op.addressing_mode)(self);
 
-            // if op.instruction_name.chars().next().unwrap() == 'B'
-            //     && op.instruction_name != "BIT"
-            //     && op.instruction_name != "BRK"
-            // {
-            //     println!("{}", self.addr_offset as i16);
-            // } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
-            //     println!("");
-            // } else {
-            //     println!("{:04X}", self.address);
-            // }
+            if self.debug {
+                if op.instruction_name.chars().next().unwrap() == 'B'
+                    && op.instruction_name != "BIT"
+                    && op.instruction_name != "BRK"
+                {
+                    println!("{}", self.addr_offset as i16);
+                } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
+                    println!("");
+                } else {
+                    println!("{:04X}", self.address);
+                }
+            }
 
             (op.instruction)(self);
             self.cycle_counter = op.cycle_amount;
@@ -142,6 +148,14 @@ impl Emu6502 {
 
     pub fn clock_is_complete(&self) -> bool {
         self.clock_compleate
+    }
+
+    pub fn get_debug(&self) -> bool {
+        self.debug
+    }
+
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
     }
 
     pub fn irq(&mut self) {
@@ -369,7 +383,7 @@ impl Emu6502 {
 
     fn ORA(&mut self) { // bitwise or
         self.cycle_counter += self.additional_cycles;
-        self.acc = self.acc & self.fetch();
+        self.acc = self.acc | self.fetch();
         self.set_flag(Flag::Z, self.acc == 0);
         self.set_flag(Flag::S, self.acc & 0x80 != 0);
     }
