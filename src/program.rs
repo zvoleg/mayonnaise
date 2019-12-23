@@ -6,6 +6,7 @@ pub struct Cartridge {
     chr_rom: Vec<u8>,
     size_prg: u8,
     size_chr: u8,
+    mirroring: u8,
     mapper: Box<dyn Mapper>,
 }
 
@@ -17,6 +18,7 @@ impl Cartridge {
 
         let size_prg = memory[4];
         let size_chr = memory[5];
+        let mirroring = memory[6] & 0x01;
         let low = (memory[6] & 0xF0) >> 4;
         let high = memory[7] & 0xF0;
         let mapper_id = high | low;
@@ -39,6 +41,7 @@ impl Cartridge {
             chr_rom,
             size_prg,
             size_chr,
+            mirroring,
             mapper
         }
     }
@@ -51,14 +54,18 @@ impl Cartridge {
         Box::new(mapper)
     }
 
-    pub fn read_prg_rom(&self, address: u16) -> u8 {
-        let idx = self.mapper.prg_addr(address);
-        self.prg_rom[idx]
+    pub fn get_mirroring(&self) -> u8 {
+        self.mirroring
     }
 
-    pub fn read_chr_rom(&self, address: u16) -> u8 {
+    pub fn read_prg_rom(&self, address: u16, data: &mut u8) {
+        let idx = self.mapper.prg_addr(address);
+        *data = self.prg_rom[idx];
+    }
+
+    pub fn read_chr_rom(&self, address: u16, data: &mut u8) {
         let idx = self.mapper.chr_addr(address);
-        self.chr_rom[idx]
+        *data = self.chr_rom[idx];
     }
 }
 

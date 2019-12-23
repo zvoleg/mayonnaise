@@ -22,10 +22,9 @@ struct Device {
 
 impl Device {
     fn new () -> Device {
-        let bus = Rc::new(RefCell::new(Bus::new()));
+        let ppu = Rc::new(RefCell::new(Ppu::new()));
+        let bus = Rc::new(RefCell::new(Bus::new(ppu.clone())));
         let cpu = Emu6502::new(bus.clone());
-        let ppu = Rc::new(RefCell::new(Ppu::new(bus.clone())));
-        bus.borrow_mut().connect_ppu(ppu.clone());
         Device {
             cpu,
             ppu,
@@ -35,14 +34,12 @@ impl Device {
     }
 
     fn insert_cartridge(&mut self, cartridge: Cartridge) {
-        self.bus.borrow_mut().insert_cartridge(Rc::new(RefCell::new(cartridge)));
+        let cartridge = Rc::new(RefCell::new(cartridge));
+        self.bus.borrow_mut().insert_cartridge(cartridge.clone());
+        self.ppu.borrow_mut().insert_cartridge(cartridge.clone());
         self.cpu.reset();
         self.ppu.borrow_mut().read_all_sprites(0);
         self.ppu.borrow_mut().read_all_sprites(1);
-    }
-
-    fn print_memory_dump(&self) {
-        self.print_memory_by_address(self.cpu.get_program_counter(), 10);
     }
 
     fn print_memory_by_address(&self, address: u16, offset: u16) {

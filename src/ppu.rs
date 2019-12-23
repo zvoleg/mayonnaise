@@ -2,7 +2,14 @@ extern crate rand;
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use crate::program::Cartridge;
 use crate::bus::Bus;
+
+enum Mirroring {
+    HORISONTAL,
+    VERTICAL,
+    UNDEFINED,
+}
 
 struct Control {
     data: u8,
@@ -75,24 +82,6 @@ impl Address {
     }
 }
 
-struct Data {
-    data: u8,
-}
-
-impl Data {
-    fn new(data: u8) -> Data {
-        Data { data }
-    }
-
-    fn get(&self) -> u8 {
-        self.data
-    }
-
-    fn set(&mut self, data: u8) {
-        self.data = data;
-    }
-}
-
 struct Register {
     data: u8,
 }
@@ -119,7 +108,7 @@ pub struct Ppu {
     // bytes assignment:
     // 1. y coordinate of sprite (top-left corner)
     // 2. sprite address in patterns array
-    // 3. sprite attributes^
+    // 3. sprite attributes:
     //    7 - vertical mirroring of sprite (1 - mirror, 0 - normal)
     //    6 - horizontal mirroring of sprite (1 - mirror, 0 - normal)
     //    5 - priority of sprite (1 - over the background, 0 - under the background)
@@ -127,7 +116,8 @@ pub struct Ppu {
     //    1, 0 - higher bits of color
     // 4. x coordinate of sprite (top-left corner)
 
-    bus: Rc<RefCell<Bus>>,
+    cartridge: Option<Rc<RefCell<Cartridge>>>,
+    mirroring: Mirroring,
 
     pub skanline: u16,
     pub cycle:    u16,
@@ -148,11 +138,11 @@ pub struct Ppu {
     oam_data:    Register, // 0x2004
     scroll:      Register, // 0x2005
     address:     Address,  // 0x2006
-    data:        Data,     // 0x2007
+                           // 0x2007 -> read/write directly from ppu memory
 }
 
 impl<'a> Ppu {
-    pub fn new(bus: Rc<RefCell<Bus>>) -> Ppu {
+    pub fn new() -> Ppu {
         let pallette_colors = [
             0x545454, 0x001E74, 0x081090, 0x300088, 0x440064, 0x5C0030, 0x540400, 0x3C1800, 0x202A00, 0x083A00, 0x004000, 0x003C00, 0x00323C, 0x000000, 0x000000, 0x000000, 
             0x989698, 0x084CC4, 0x3032EC, 0x5C1EE4, 0x8814B0, 0xA01464, 0x982220, 0x783C00, 0x545A00, 0x287200, 0x087C00, 0x007628, 0x006678, 0x000000, 0x000000, 0x000000,
@@ -165,7 +155,8 @@ impl<'a> Ppu {
             name_table: [0; 0x0800],
             pallette:   [0; 0x0020],
 
-            bus,
+            cartridge: None,
+            mirroring: Mirroring::UNDEFINED,
 
             skanline:          0,
             cycle:             0,
@@ -186,8 +177,16 @@ impl<'a> Ppu {
             oam_data:          Register::new(),
             scroll:            Register::new(),
             address:           Address::new(0),
-            data:              Data::new(0),
         }
+    }
+
+    pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
+        self.mirroring = match cartridge.borrow().get_mirroring() {
+            0 => Mirroring::HORISONTAL,
+            1 => Mirroring::VERTICAL,
+            _ => Mirroring::UNDEFINED,
+        };
+        self.cartridge = Some(cartridge);
     }
 
     pub fn cpu_read(&mut self, address: u16) -> u8 {
@@ -261,10 +260,15 @@ impl<'a> Ppu {
     pub fn read_ppu(&self, address: u16) -> u8 {
         let mut data = 0;
         if address < 0x2000 {
-            data = self.bus.as_ref().borrow().read_chr_from_cartridge(address);
+            data = self.read_from_cartridge(address);
         } else if address >= 0x2000 && address < 0x3F00 {
-            let address = address & 0x2FFF;
-            data = self.name_table[(address & 0x07FF) as usize]; // TODO implement name table mirroring
+            let address = address & 0x07FF;
+            match self.mirroring {
+                Mirroring::HORISONTAL => (),
+                Mirroring::VERTICAL => (),
+                _ => (),
+            }
+            data = self.name_table[address as usize]; // TODO implement name table mirroring
         } else if address >= 0x3F00 && address < 0x3FFF {
             let address = address & 0x001F;
             data = self.pallette[address as usize];
@@ -277,8 +281,13 @@ impl<'a> Ppu {
         if address < 0x2000 {
             // data = self.bus.as_ref().borrow().read_chr_from_cartridge(address);
         } else if address >= 0x2000 && address < 0x3F00 {
-            let address = address & 0x2FFF;
-            self.name_table[(address & 0x07FF) as usize] = data; // TODO implement name table mirroring
+            let address = address & 0x07FF;
+            match self.mirroring {
+                Mirroring::HORISONTAL => (),
+                Mirroring::VERTICAL => (),
+                _ => (),
+            }
+            self.name_table[address as usize] = data; // TODO implement name table mirroring
         } else if address >= 0x3F00 && address < 0x3FFF {
             let address = address & 0x001F;
             self.pallette[address as usize] = data;
@@ -286,7 +295,9 @@ impl<'a> Ppu {
     }
 
     fn read_from_cartridge(&self, address: u16) -> u8 {
-        self.bus.borrow().read_chr_from_cartridge(address)
+        let mut data = 0;
+        self.cartridge.as_ref().unwrap().borrow().read_chr_rom(address, &mut data);
+        data
     }
 
     pub fn get_pattern_table(&self, table: u8) -> [u8; 0x4000] {
