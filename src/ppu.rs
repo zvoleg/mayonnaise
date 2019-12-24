@@ -3,7 +3,6 @@ extern crate rand;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::program::Cartridge;
-use crate::bus::Bus;
 
 enum Mirroring {
     HORISONTAL,
@@ -39,6 +38,16 @@ impl Control {
         match self.data & 0x10 != 0 {
             true => 0x1000,
             false => 0x0000
+        }
+    }
+
+    fn base_name_table_address(&self) -> u16 {
+        match self.data & 0x03 {
+            0 => 0x2000,
+            1 => 0x2400,
+            2 => 0x2800,
+            3 => 0x2C00,
+            _ => panic!("undefined base address for name table"),
         }
     }
 }
@@ -82,16 +91,6 @@ impl Address {
     }
 }
 
-struct Register {
-    data: u8,
-}
-
-impl Register {
-    fn new() -> Register {
-        Register { data: 0x00 }
-    }
-}
-
 pub struct Ppu {
     pallette_colors: [u32; 0x40],
     patterns: [[u8; 0x4000]; 2], // not necessary for emulation
@@ -132,11 +131,11 @@ pub struct Ppu {
     nmi_require:    bool,
     // Registers
     control:     Control,  // 0x2000
-    mask:        Register, // 0x2001
+    mask:        u8, // 0x2001
     status:      Status,   // 0x2002
-    oam_address: Register, // 0x2003
-    oam_data:    Register, // 0x2004
-    scroll:      Register, // 0x2005
+    oam_address: u8, // 0x2003
+    oam_data:    u8, // 0x2004
+    scroll:      u8, // 0x2005
     address:     Address,  // 0x2006
                            // 0x2007 -> read/write directly from ppu memory
 }
@@ -171,11 +170,11 @@ impl<'a> Ppu {
             nmi_require:       false,
 
             control:           Control::new(0),
-            mask:              Register::new(),
+            mask:              0,
             status:            Status::new(0),
-            oam_address:       Register::new(),
-            oam_data:          Register::new(),
-            scroll:            Register::new(),
+            oam_address:       0,
+            oam_data:          0,
+            scroll:            0,
             address:           Address::new(0),
         }
     }
@@ -230,11 +229,11 @@ impl<'a> Ppu {
                 }
             },
             0x0001 => {
-                self.mask.data = data;
+                self.mask = data;
             },
             0x0002 => (),
             0x0003 => {
-                self.oam_address.data = data;
+                self.oam_address = data;
             },
             0x0004 => (),
             0x0005 => (),
@@ -262,13 +261,32 @@ impl<'a> Ppu {
         if address < 0x2000 {
             data = self.read_from_cartridge(address);
         } else if address >= 0x2000 && address < 0x3F00 {
-            let address = address & 0x07FF;
+            let address = (address & 0x0FFF) as usize;
             match self.mirroring {
-                Mirroring::HORISONTAL => (),
-                Mirroring::VERTICAL => (),
+                Mirroring::HORISONTAL => {
+                    if address < 0x400 {
+                        data = self.name_table[address];
+                    } else if address >= 0x400 && address < 0x800 {
+                        data = self.name_table[address & 0x3FF];
+                    } else if address >= 0x800 && address < 0xC00 {
+                        data = self.name_table[address & 0x7FF];
+                    } else if address >= 0xC00 && address < 0x1000 {
+                        data = self.name_table[address & 0x7FF];
+                    }
+                },
+                Mirroring::VERTICAL => {
+                    if address < 0x400 {
+                        data = self.name_table[address];
+                    } else if address >= 0x400 && address < 0x800 {
+                        data = self.name_table[address];
+                    } else if address >= 0x800 && address < 0xC00 {
+                        data = self.name_table[address & 0x3FF];
+                    } else if address >= 0xC00 && address < 0x1000 {
+                        data = self.name_table[address & 0x7FF];
+                    }
+                },
                 _ => (),
             }
-            data = self.name_table[address as usize]; // TODO implement name table mirroring
         } else if address >= 0x3F00 && address < 0x3FFF {
             let address = address & 0x001F;
             data = self.pallette[address as usize];
@@ -281,13 +299,32 @@ impl<'a> Ppu {
         if address < 0x2000 {
             // data = self.bus.as_ref().borrow().read_chr_from_cartridge(address);
         } else if address >= 0x2000 && address < 0x3F00 {
-            let address = address & 0x07FF;
+            let address = (address & 0x0FFF) as usize;
             match self.mirroring {
-                Mirroring::HORISONTAL => (),
-                Mirroring::VERTICAL => (),
+                Mirroring::HORISONTAL => {
+                    if address < 0x400 {
+                        self.name_table[address] = data;
+                    } else if address >= 0x400 && address < 0x800 {
+                        self.name_table[address & 0x3FF] = data;
+                    } else if address >= 0x800 && address < 0xC00 {
+                        self.name_table[address & 0x7FF] = data;
+                    } else if address >= 0xC00 && address < 0x1000 {
+                        self.name_table[address & 0x7FF] = data;
+                    }
+                },
+                Mirroring::VERTICAL => {
+                    if address < 0x400 {
+                        self.name_table[address] = data;
+                    } else if address >= 0x400 && address < 0x800 {
+                        self.name_table[address] = data;
+                    } else if address >= 0x800 && address < 0xC00 {
+                        self.name_table[address & 0x3FF] = data;
+                    } else if address >= 0xC00 && address < 0x1000 {
+                        self.name_table[address & 0x7FF] = data;
+                    }
+                },
                 _ => (),
             }
-            self.name_table[address as usize] = data; // TODO implement name table mirroring
         } else if address >= 0x3F00 && address < 0x3FFF {
             let address = address & 0x001F;
             self.pallette[address as usize] = data;
