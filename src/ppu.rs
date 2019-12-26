@@ -189,19 +189,29 @@ pub struct Ppu {
     nmi_require:    bool,
     // Registers
     control:     Control,  // 0x2000
-    mask:        u8, // 0x2001
+    mask:        u8,       // 0x2001
     status:      Status,   // 0x2002
-    oam_address: u8, // 0x2003
-    oam_data:    u8, // 0x2004
-                     // 0x2005 -> scroll register logic is hiden in loopy register
-                     // 0x2006 -> address register logic is hiden in loopy register
-                     // 0x2007 -> read/write directly from ppu memory
+    oam_address: u8,       // 0x2003
+    oam_data:    u8,       // 0x2004
+                           // 0x2005 -> scroll register logic is hiden in loopy register
+                           // 0x2006 -> address register logic is hiden in loopy register
+                           // 0x2007 -> read/write directly from ppu memory
 
     cur_loopy:     Loopy,
     tmp_loopy:     Loopy,
     fine_x_scroll:     u8,
     latch:             bool,
     data_buffer:       u8,
+
+    background_name_table:   u8,
+    background_attribute:    u8,
+    background_low_pattern:  u8,
+    background_high_pattern: u8,
+
+    low_pattern_shift_register:    u16,
+    high_pattern_shift_register:   u16,
+    low_attribute_shift_register:  u16,
+    high_attribute_shift_register: u16,
 }
 
 impl<'a> Ppu {
@@ -239,7 +249,23 @@ impl<'a> Ppu {
             fine_x_scroll:     0,
             latch:             false,
             data_buffer:       0,
+
+            background_name_table:   0,
+            background_attribute:    0,
+            background_low_pattern:  0,
+            background_high_pattern: 0,
+
+            low_pattern_shift_register:    0,
+            high_pattern_shift_register:   0,
+            low_attribute_shift_register:  0,
+            high_attribute_shift_register: 0,
         }
+    }
+
+    pub fn set_next_data_to_shift_registers(&mut self) {
+        self.low_pattern_shift_register = (self.low_pattern_shift_register & 0xFF00) | self.background_low_pattern as u16;
+        self.high_pattern_shift_register = (self.high_pattern_shift_register & 0xFF00) | self.background_high_pattern as u16;
+        self.low_attribute_shift_register = (self.low_attribute_shift_register & 0xFF00) | self.ba
     }
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
@@ -474,17 +500,37 @@ impl<'a> Ppu {
             self.status.set_vblank(false);
             self.vblank = false;
         }
-        let color = if (self.cycle == 0 && self.skanline < 240) || (self.cycle < 256 && self.skanline == 239) {
-            Some(0)
-        } else if (self.cycle > 0 && self.cycle < 256) && self.skanline < 240 {
-            if rand::random() {
-                Some(0xFFFFFF)
-            } else {
-                Some(0)
+        let mut color = None;
+        if (self.cycle >= 1 && self.cycle <= 256) && self.skanline <= 239 {
+            match self.cycle % 8 {
+                1 => self.background_name_table = self.read_ppu(self.cur_loopy.data),
+                3 => {
+                    // background_attribute
+                },
+                5 => {
+                    // low_byte
+                }
+                7 => {
+                    // high_byte
+                }
+                0 => {
+                    self.cur_loopy.increment_coarse_x();
+                }
+                _ => (),
             }
-        } else {
-            None
-        };
+        }
+
+        // if (self.cycle == 1 && self.skanline < 240) || (self.cycle < 256 && self.skanline == 239) {
+        //     Some(0)
+        // } else if (self.cycle > 0 && self.cycle < 256) && self.skanline < 240 {
+        //     if rand::random() {
+        //         Some(0xFFFFFF)
+        //     } else {
+        //         Some(0)
+        //     }
+        // } else {
+        //     None
+        // };
         self.cycle += 1;
         if self.cycle >= 341 {
             self.cycle = 0;
