@@ -97,16 +97,40 @@ impl Loopy {
         self.data |= coarse_x as u16;
     }
 
+    fn increment_coarse_x(&mut self) {
+        let coarse_x = (self.data & 31) as u8;
+        self.set_coarse_y(coarse_x + 1);
+    }
+
     fn set_coarse_y(&mut self, full_y: u8) {
         let coarse_y = (full_y >> 3) as u16;
         self.data &= 0x7C1F; // clear bits 6, 7, 8, 9, 10
         self.data |= coarse_y << 5;
     }
 
+    fn increment_coarse_y(&mut self) {
+        let coarse_y = ((self.data >> 5) & 31) as u8;
+        self.set_coarse_y(coarse_y + 1);
+    }
+
     fn set_fine_y(&mut self, full_y: u8) {
         let fine_y = (full_y & 0x07) as u16;
         self.data &= 0x0FFF; // clear bits 13, 14, 15
         self.data |= fine_y << 12;
+    }
+
+    fn get_fine_y(&self) -> u8 {
+        (self.data >> 12) as u8
+    }
+
+    fn increment_fine_y(&mut self) {
+        let fine_y = self.get_fine_y();
+        if fine_y == 7 {
+            self.set_fine_y(0);
+            self.increment_coarse_y();
+        } else {
+            self.set_fine_y(fine_y + 1);
+        }
     }
 
     fn get_name_table_address(&self) -> usize {
@@ -173,8 +197,8 @@ pub struct Ppu {
                      // 0x2006 -> address register logic is hiden in loopy register
                      // 0x2007 -> read/write directly from ppu memory
 
-    cur_vram_addr:     Loopy,
-    tmp_vram_addr:     Loopy,
+    cur_loopy:     Loopy,
+    tmp_loopy:     Loopy,
     fine_x_scroll:     u8,
     latch:             bool,
     data_buffer:       u8,
@@ -210,8 +234,8 @@ impl<'a> Ppu {
             oam_address:       0,
             oam_data:          0,
 
-            cur_vram_addr:     Loopy::new(),
-            tmp_vram_addr:     Loopy::new(),
+            cur_loopy:     Loopy::new(),
+            tmp_loopy:     Loopy::new(),
             fine_x_scroll:     0,
             latch:             false,
             data_buffer:       0,
@@ -243,12 +267,12 @@ impl<'a> Ppu {
             0x0006 => (),
             0x0007 => {
                 data = self.data_buffer;
-                self.data_buffer = self.read_ppu(self.cur_vram_addr.data);
-                if self.cur_vram_addr.data >= 0x3F00 {
+                self.data_buffer = self.read_ppu(self.cur_loopy.data);
+                if self.cur_loopy.data >= 0x3F00 {
                     data = self.data_buffer;
                 }
                 let increment = self.control.get_increment();
-                self.cur_vram_addr.add_increment(increment);
+                self.cur_loopy.add_increment(increment);
             },
             _ => panic!("wrong addres when cpu try read ppu registers"),
         };
@@ -260,7 +284,7 @@ impl<'a> Ppu {
             0x0000 => {
                 let old_nmi_status = self.control.nmi_flag();
                 self.control.set(data);
-                self.tmp_vram_addr.set_name_table(data);
+                self.tmp_loopy.set_name_table(data);
                 if self.vblank &&
                     self.status.in_vblank() &&
                     !old_nmi_status &&
@@ -278,29 +302,29 @@ impl<'a> Ppu {
             0x0004 => (),
             0x0005 => {
                 if !self.latch {
-                    self.tmp_vram_addr.set_coarse_x(data);
+                    self.tmp_loopy.set_coarse_x(data);
                     self.fine_x_scroll = data & 0x07;
                     self.latch = !self.latch;
                 } else {
-                    self.tmp_vram_addr.set_coarse_y(data);
-                    self.tmp_vram_addr.set_fine_y(data);
+                    self.tmp_loopy.set_coarse_y(data);
+                    self.tmp_loopy.set_fine_y(data);
                     self.latch = !self.latch;
                 }
             },
             0x0006 => {
                 if !self.latch {
-                    self.tmp_vram_addr.set_high_address(data);
+                    self.tmp_loopy.set_high_address(data);
                     self.latch = !self.latch;
                 } else {
-                    self.tmp_vram_addr.set_low_address(data);
-                    self.cur_vram_addr = self.tmp_vram_addr;
+                    self.tmp_loopy.set_low_address(data);
+                    self.cur_loopy = self.tmp_loopy;
                     self.latch = !self.latch;
                 }
             },
             0x0007 => {
-                self.write_ppu(self.cur_vram_addr.data, data);
+                self.write_ppu(self.cur_loopy.data, data);
                 let increment = self.control.get_increment();
-                self.cur_vram_addr.add_increment(increment);
+                self.cur_loopy.add_increment(increment);
             },
             _ => panic!("wrong addres when cpu try wryte ppu registers"),
         };
