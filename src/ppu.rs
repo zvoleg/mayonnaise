@@ -73,17 +73,56 @@ impl Status {
     }
 }
 
-struct Address {
+#[derive(Copy, Clone)]
+struct Loopy {
     data: u16,
 }
 
-impl Address {
-    fn new(data: u16) -> Address {
-        Address { data }
+impl Loopy {
+    fn new() -> Loopy {
+        Loopy {
+            data: 0,
+        }
     }
 
-    fn set_address(&mut self, new_address: u16) {
-        self.data = new_address;
+    fn set_name_table(&mut self, name_table: u8) {
+        let name_table = (name_table & 0x03) as u16;
+        self.data &= 0x73FF; // clear bits 11 and 12
+        self.data |= name_table << 10;
+    }
+
+    fn set_coarse_x(&mut self, full_x: u8) {
+        let coarse_x = full_x >> 3;
+        self.data &= 0x7FE0; // clear bits 1, 2, 3, 4, 5
+        self.data |= coarse_x as u16;
+    }
+
+    fn set_coarse_y(&mut self, full_y: u8) {
+        let coarse_y = (full_y >> 3) as u16;
+        self.data &= 0x7C1F; // clear bits 6, 7, 8, 9, 10
+        self.data |= coarse_y << 5;
+    }
+
+    fn set_fine_y(&mut self, full_y: u8) {
+        let fine_y = (full_y & 0x07) as u16;
+        self.data &= 0x0FFF; // clear bits 13, 14, 15
+        self.data |= fine_y << 12;
+    }
+
+    fn get_name_table_address(&self) -> usize {
+        (self.data & 0x0FFF) as usize
+    }
+
+    fn set_high_address(&mut self, data: u8) {
+        let high_address = (data & 0x3f) as u16;
+        self.data &= 0x00FF; // clear high 8 bits
+        self.data |= high_address << 8;
+    }
+
+    fn set_low_address(&mut self, data: u8) {
+        let low_address = data as u16;
+        self.data &= 0xFF00; //clear low 8 bits
+        self.data |= low_address;
     }
 
     fn add_increment(&mut self, increment: u16) {
@@ -121,11 +160,6 @@ pub struct Ppu {
     pub skanline: u16,
     pub cycle:    u16,
 
-    data_buffer:       u8,
-    latch:             bool,
-    high_address_byte: u8,
-    low_address_byte:  u8,
-
     frame_complete: bool,
     vblank:         bool,
     nmi_require:    bool,
@@ -135,9 +169,15 @@ pub struct Ppu {
     status:      Status,   // 0x2002
     oam_address: u8, // 0x2003
     oam_data:    u8, // 0x2004
-    scroll:      u8, // 0x2005
-    address:     Address,  // 0x2006
-                           // 0x2007 -> read/write directly from ppu memory
+                     // 0x2005 -> scroll register logic is hiden in loopy register
+                     // 0x2006 -> address register logic is hiden in loopy register
+                     // 0x2007 -> read/write directly from ppu memory
+
+    cur_vram_addr:     Loopy,
+    tmp_vram_addr:     Loopy,
+    fine_x_scroll:     u8,
+    latch:             bool,
+    data_buffer:       u8,
 }
 
 impl<'a> Ppu {
@@ -160,11 +200,6 @@ impl<'a> Ppu {
             skanline:          0,
             cycle:             0,
 
-            data_buffer:       0,
-            latch:             false,
-            high_address_byte: 0,
-            low_address_byte:  0,
-
             frame_complete:    false,
             vblank:            false,
             nmi_require:       false,
@@ -174,8 +209,12 @@ impl<'a> Ppu {
             status:            Status::new(0),
             oam_address:       0,
             oam_data:          0,
-            scroll:            0,
-            address:           Address::new(0),
+
+            cur_vram_addr:     Loopy::new(),
+            tmp_vram_addr:     Loopy::new(),
+            fine_x_scroll:     0,
+            latch:             false,
+            data_buffer:       0,
         }
     }
 
@@ -204,12 +243,12 @@ impl<'a> Ppu {
             0x0006 => (),
             0x0007 => {
                 data = self.data_buffer;
-                self.data_buffer = self.read_ppu(self.address.data);
-                if self.address.data >= 0x3F00 {
+                self.data_buffer = self.read_ppu(self.cur_vram_addr.data);
+                if self.cur_vram_addr.data >= 0x3F00 {
                     data = self.data_buffer;
                 }
                 let increment = self.control.get_increment();
-                self.address.add_increment(increment);
+                self.cur_vram_addr.add_increment(increment);
             },
             _ => panic!("wrong addres when cpu try read ppu registers"),
         };
@@ -221,6 +260,7 @@ impl<'a> Ppu {
             0x0000 => {
                 let old_nmi_status = self.control.nmi_flag();
                 self.control.set(data);
+                self.tmp_vram_addr.set_name_table(data);
                 if self.vblank &&
                     self.status.in_vblank() &&
                     !old_nmi_status &&
@@ -236,21 +276,31 @@ impl<'a> Ppu {
                 self.oam_address = data;
             },
             0x0004 => (),
-            0x0005 => (),
+            0x0005 => {
+                if !self.latch {
+                    self.tmp_vram_addr.set_coarse_x(data);
+                    self.fine_x_scroll = data & 0x07;
+                    self.latch = !self.latch;
+                } else {
+                    self.tmp_vram_addr.set_coarse_y(data);
+                    self.tmp_vram_addr.set_fine_y(data);
+                    self.latch = !self.latch;
+                }
+            },
             0x0006 => {
                 if !self.latch {
-                    self.high_address_byte = data;
-                    self.latch = true;
+                    self.tmp_vram_addr.set_high_address(data);
+                    self.latch = !self.latch;
                 } else {
-                    self.low_address_byte = data;
-                    self.latch = false;
-                    self.address.set_address(((self.high_address_byte as u16) << 8) | self.low_address_byte as u16);
+                    self.tmp_vram_addr.set_low_address(data);
+                    self.cur_vram_addr = self.tmp_vram_addr;
+                    self.latch = !self.latch;
                 }
             },
             0x0007 => {
-                self.write_ppu(self.address.data, data);
+                self.write_ppu(self.cur_vram_addr.data, data);
                 let increment = self.control.get_increment();
-                self.address.add_increment(increment);
+                self.cur_vram_addr.add_increment(increment);
             },
             _ => panic!("wrong addres when cpu try wryte ppu registers"),
         };
@@ -390,14 +440,14 @@ impl<'a> Ppu {
 
     pub fn clock(&mut self) -> Option<u32> {
         if self.skanline == 241 && self.cycle == 1 {
-            self.status.data |= 0x80;
+            self.status.set_vblank(true);
             self.vblank = true;
-            if self.control.data & 0x80 != 0 {
+            if self.control.nmi_flag() {
                 self.nmi_require = true;
             }
         }
         if self.skanline == 261 && self.cycle == 1 {
-            self.status.data &= !0x80;
+            self.status.set_vblank(false);
             self.vblank = false;
         }
         let color = if (self.cycle == 0 && self.skanline < 240) || (self.cycle < 256 && self.skanline == 239) {
