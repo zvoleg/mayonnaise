@@ -68,14 +68,14 @@ impl Device {
 
     fn clock(&mut self) -> Option<u32> {
         let color = self.ppu.borrow_mut().clock();
+        if self.clock_counter % 3 == 0 {
+            self.cpu.clock();
+        }
         if self.ppu.borrow().nmi_require() {
             self.cpu.nmi();
             self.ppu.borrow_mut().reset_nmi_require();
         }
         self.clock_counter = self.clock_counter.overflowing_add(1).0;
-        if self.clock_counter % 3 == 0 {
-            self.cpu.clock();
-        }
         color
     }
 }
