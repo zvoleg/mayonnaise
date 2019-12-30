@@ -63,14 +63,28 @@ impl Status {
     }
 }
 
+struct Mask {
+    data: u8
+}
+
+impl Mask {
+    fn new(data: u8) -> Mask {
+        Mask { data }
+    }
+
+    fn background_enable(&self) -> bool {
+        self.data & 0x08 != 0
+    }
+}
+
 #[derive(Copy, Clone)]
-struct Loopy {
+struct AddresRegister {
     data: u16,
 }
 
-impl Loopy {
-    fn new() -> Loopy {
-        Loopy {
+impl AddresRegister {
+    fn new() -> AddresRegister {
+        AddresRegister {
             data: 0,
         }
     }
@@ -81,38 +95,38 @@ impl Loopy {
         self.data |= name_table << 10;
     }
 
-    fn set_coarse_x(&mut self, full_x: u8) {
-        let coarse_x = full_x >> 3;
+    fn set_coarse_x(&mut self, coarse_x: u8) {
+        let coarse_x = (coarse_x & 0x1F) as u16;
         self.data &= 0x7FE0; // clear bits 1, 2, 3, 4, 5
-        self.data |= coarse_x as u16;
+        self.data |= coarse_x;
     }
 
-    fn get_coarse_x(&self) -> u16 {
-        self.data & 0x001F
+    fn get_coarse_x(&self) -> u8 {
+        (self.data & 0x001F) as u8
     }
 
     fn increment_coarse_x(&mut self) {
-        let coarse_x = self.get_coarse_x() as u8;
-        self.set_coarse_x((coarse_x + 1) << 3);
+        let coarse_x = self.get_coarse_x();
+        self.set_coarse_x(coarse_x + 1);
     }
 
-    fn set_coarse_y(&mut self, full_y: u8) {
-        let coarse_y = (full_y >> 3) as u16;
+    fn set_coarse_y(&mut self, coarse_y: u8) {
+        let coarse_y = (coarse_y & 0x1F) as u16;
         self.data &= 0x7C1F; // clear bits 6, 7, 8, 9, 10
         self.data |= coarse_y << 5;
     }
 
-    fn get_coarse_y(&self) -> u16 {
-        (self.data >> 5) & 0x001F
+    fn get_coarse_y(&self) -> u8 {
+        ((self.data >> 5) & 0x001F) as u8
     }
 
     fn increment_coarse_y(&mut self) {
-        let coarse_y = self.get_coarse_y() as u8;
-        self.set_coarse_y((coarse_y + 1) << 3);
+        let coarse_y = self.get_coarse_y();
+        self.set_coarse_y(coarse_y + 1);
     }
 
-    fn set_fine_y(&mut self, full_y: u8) {
-        let fine_y = (full_y & 0x07) as u16;
+    fn set_fine_y(&mut self, fine_y: u8) {
+        let fine_y = (fine_y & 0x07) as u16;
         self.data &= 0x0FFF; // clear bits 13, 14, 15
         self.data |= fine_y << 12;
     }
@@ -136,8 +150,8 @@ impl Loopy {
     }
 
     fn get_attribute_address(&self) -> u16 {
-        let x_offset = self.get_coarse_x() >> 2;
-        let y_offset = self.get_coarse_y() >> 2;
+        let x_offset = (self.get_coarse_x() >> 2) as u16;
+        let y_offset = (self.get_coarse_y() >> 2) as u16;
         0x2000 | self.data & 0x0C00 | 0x03C0 | (y_offset << 3) | x_offset
     }
 
@@ -193,7 +207,7 @@ pub struct Ppu {
     nmi_require:    bool,
     // Registers
     control:     Control,  // 0x2000
-    mask:        u8,       // 0x2001
+    mask:        Mask,     // 0x2001
     status:      Status,   // 0x2002
     oam_address: u8,       // 0x2003
     oam_data:    u8,       // 0x2004
@@ -201,16 +215,16 @@ pub struct Ppu {
                            // 0x2006 -> address register logic is hiden in loopy register
                            // 0x2007 -> read/write directly from ppu memory
 
-    cur_loopy:     Loopy,
-    tmp_loopy:     Loopy,
+    cur_addr:          AddresRegister,
+    tmp_addr:          AddresRegister,
     fine_x_scroll:     u8,
     latch:             bool,
     data_buffer:       u8,
 
-    next_background_tile_id:   u8,
-    next_background_attribute:    u8,
-    next_background_low_pattern:  u8,
-    next_background_high_pattern: u8,
+    next_background_tile_id:       u8,
+    next_background_attribute:     u8,
+    next_background_low_pattern:   u8,
+    next_background_high_pattern:  u8,
 
     low_pattern_shift_register:    u16,
     high_pattern_shift_register:   u16,
@@ -243,18 +257,18 @@ impl<'a> Ppu {
             nmi_require:       false,
 
             control:           Control::new(0),
-            mask:              0,
+            mask:              Mask::new(0),
             status:            Status::new(0),
             oam_address:       0,
             oam_data:          0,
 
-            cur_loopy:     Loopy::new(),
-            tmp_loopy:     Loopy::new(),
+            cur_addr:          AddresRegister::new(),
+            tmp_addr:          AddresRegister::new(),
             fine_x_scroll:     0,
             latch:             false,
             data_buffer:       0,
 
-            next_background_tile_id:   0,
+            next_background_tile_id:      0,
             next_background_attribute:    0,
             next_background_low_pattern:  0,
             next_background_high_pattern: 0,
@@ -277,7 +291,7 @@ impl<'a> Ppu {
         self.low_pattern_shift_register = (self.low_pattern_shift_register & 0xFF00) | self.next_background_low_pattern as u16;
         self.high_pattern_shift_register = (self.high_pattern_shift_register & 0xFF00) | self.next_background_high_pattern as u16;
 
-        let attribute_idx_for_tile = ((self.cur_loopy.get_coarse_y() >> 1) & 0x01 << 1) | (self.cur_loopy.get_coarse_x() >> 1) & 0x01;
+        let attribute_idx_for_tile = (self.cur_addr.get_coarse_y() & 0x02) | ((self.cur_addr.get_coarse_x() >> 1) & 0x01);
         let low_attribute_bit = (self.next_background_attribute >> (attribute_idx_for_tile * 2)) & 0x01;
         self.low_attribute_shift_register = (self.low_attribute_shift_register & 0xFF00) | match low_attribute_bit {
             1 => 0x00FF,
@@ -307,8 +321,34 @@ impl<'a> Ppu {
         self.cartridge = Some(cartridge);
     }
 
+    pub fn reset(&mut self) {
+            self.skanline = 0;
+            self.cycle = 0;
+            self.frame_complete = false;
+            self.vblank = false;
+            self.nmi_require = false;
+            self.control = Control::new(0);
+            self.mask = Mask::new(0);
+            self.status = Status::new(0);
+            self.oam_address = 0;
+            self.oam_data = 0;
+            self.cur_addr = AddresRegister::new();
+            self.tmp_addr = AddresRegister::new();
+            self.fine_x_scroll = 0;
+            self.latch = false;
+            self.data_buffer = 0;
+            self.next_background_tile_id = 0;
+            self.next_background_attribute = 0;
+            self.next_background_low_pattern = 0;
+            self.next_background_high_pattern = 0;
+            self.low_pattern_shift_register = 0;
+            self.high_pattern_shift_register = 0;
+            self.low_attribute_shift_register = 0;
+            self.high_attribute_shift_register = 0;
+    }
+
     pub fn cpu_read(&mut self, address: u16) -> u8 {
-        let mut data = 0;
+        let mut data;
         match address {
             // 0x0000 => (),
             // 0x0001 => (),
@@ -322,14 +362,13 @@ impl<'a> Ppu {
             // 0x0005 => (),
             // 0x0006 => (),
             0x0007 => {
-                println!("cpu read to 0x0007");
                 data = self.data_buffer;
-                self.data_buffer = self.read_ppu(self.cur_loopy.data);
-                if self.cur_loopy.data >= 0x3F00 {
+                self.data_buffer = self.read_ppu(self.cur_addr.data);
+                if self.cur_addr.data >= 0x3F00 {
                     data = self.data_buffer;
                 }
                 let increment = self.control.get_increment();
-                self.cur_loopy.add_increment(increment);
+                self.cur_addr.add_increment(increment);
             },
             _ => panic!("wrong addres when cpu try read ppu registers, address: {:04X}", address),
         };
@@ -341,7 +380,7 @@ impl<'a> Ppu {
             0x0000 => {
                 let old_nmi_status = self.control.nmi_flag();
                 self.control.set(data);
-                self.tmp_loopy.set_name_table(data);
+                self.tmp_addr.set_name_table(data & 0x03);
                 if self.vblank &&
                     self.status.in_vblank() &&
                     !old_nmi_status &&
@@ -350,7 +389,7 @@ impl<'a> Ppu {
                 }
             },
             0x0001 => {
-                self.mask = data;
+                self.mask.data = data;
             },
             // 0x0002 => (),
             0x0003 => {
@@ -358,33 +397,30 @@ impl<'a> Ppu {
             },
             0x0004 => (),
             0x0005 => {
-                println!("cpu write to 0x0005");
                 if !self.latch {
-                    self.tmp_loopy.set_coarse_x(data);
+                    self.tmp_addr.set_coarse_x(data >> 3);
                     self.fine_x_scroll = data & 0x07;
                     self.latch = !self.latch;
                 } else {
-                    self.tmp_loopy.set_coarse_y(data);
-                    self.tmp_loopy.set_fine_y(data);
+                    self.tmp_addr.set_coarse_y(data >> 3);
+                    self.tmp_addr.set_fine_y(data & 0x07);
                     self.latch = !self.latch;
                 }
             },
             0x0006 => {
-                println!("cpu write to 0x0006");
                 if !self.latch {
-                    self.tmp_loopy.set_high_address(data);
+                    self.tmp_addr.set_high_address(data);
                     self.latch = !self.latch;
                 } else {
-                    self.tmp_loopy.set_low_address(data);
-                    self.cur_loopy = self.tmp_loopy;
+                    self.tmp_addr.set_low_address(data);
+                    self.cur_addr = self.tmp_addr;
                     self.latch = !self.latch;
                 }
             },
             0x0007 => {
-                println!("cpu write to 0x0007");
-                self.write_ppu(self.cur_loopy.data, data);
+                self.write_ppu(self.cur_addr.data, data);
                 let increment = self.control.get_increment();
-                self.cur_loopy.add_increment(increment);
+                self.cur_addr.add_increment(increment);
             },
             _ => panic!("wrong addres when cpu try wryte ppu registers, address: {:04X}", address),
         };
@@ -524,23 +560,23 @@ impl<'a> Ppu {
     fn fetching_data_trough_cycles(&mut self) {
         match self.cycle % 8 {
             1 => {
-                self.next_background_tile_id = self.read_ppu(self.cur_loopy.get_tile_address());
+                self.next_background_tile_id = self.read_ppu(self.cur_addr.get_tile_address());
             },
             3 => {
-                self.next_background_attribute = self.read_ppu(self.cur_loopy.get_attribute_address());
+                self.next_background_attribute = self.read_ppu(self.cur_addr.get_attribute_address());
             },
             5 => {
-                let low_byte_address = self.control.background_table_address() + (self.next_background_tile_id as u16 * 16) + self.cur_loopy.get_fine_y() as u16;
+                let low_byte_address = self.control.background_table_address() + (self.next_background_tile_id as u16 * 16) + self.cur_addr.get_fine_y() as u16;
                 self.next_background_low_pattern = self.read_ppu(low_byte_address);
             }
             7 => {
-                let high_byte_address = self.control.background_table_address() + (self.next_background_tile_id as u16 * 16) + 8 + self.cur_loopy.get_fine_y() as u16;
+                let high_byte_address = self.control.background_table_address() + (self.next_background_tile_id as u16 * 16) + 8 + self.cur_addr.get_fine_y() as u16;
                 self.next_background_high_pattern = self.read_ppu(high_byte_address);
             },
             0 => {
                 self.shifting_registers();
                 self.set_next_data_to_shift_registers();
-                self.cur_loopy.increment_coarse_x();
+                self.cur_addr.increment_coarse_x();
             }
             _ => (),
         }
@@ -553,55 +589,60 @@ impl<'a> Ppu {
 
     pub fn clock(&mut self) -> Option<u32> {
         if self.skanline == 241 && self.cycle == 1 {
-            println!("start vblank");
             self.status.set_vblank(true);
             self.vblank = true;
             if self.control.nmi_flag() {
                 self.nmi_require = true;
             }
+            println!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tloopy: {:04X} | cloopy: {:04X}",
+                self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
         }
         if self.skanline == 261 && self.cycle == 1 {
-            println!("end vblank");
             self.status.set_vblank(false);
             self.vblank = false;
+            println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tloopy: {:04X} | cloopy: {:04X}",
+            self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
         }
         let mut color = None;
 
         if self.cycle >= 1 && self.cycle <= 256 && self.skanline <= 239 {
-            let color_address = self.get_collor_address();
-            let pallette_address = self.read_ppu(color_address);
-            color = Some(self.pallette_colors[pallette_address as usize]);
-            self.fetching_data_trough_cycles();
+            color = Some(self.pallette_colors[self.read_ppu(0x3F00) as usize]);
         }
 
-        if self.cycle >= 321 && self.cycle <= 336 && (self.skanline <= 239 || self.skanline == 261){
-            self.fetching_data_trough_cycles();
-        }
+        if self.mask.background_enable() {
+            if self.cycle >= 1 && self.cycle <= 256 && self.skanline <= 239 {
+                let color_address = self.get_collor_address();
+                let pallette_address = self.read_ppu(color_address);
+                color = Some(self.pallette_colors[pallette_address as usize]);
+                self.fetching_data_trough_cycles();
+            }
 
-        if self.cycle == 257 && (self.skanline <= 239 || self.skanline == 261) {
-            self.cur_loopy.set_coarse_x(self.tmp_loopy.get_coarse_x() as u8);
-        }
+            if self.cycle >= 321 && self.cycle <= 336 && (self.skanline <= 239 || self.skanline == 261) {
+                self.fetching_data_trough_cycles();
+            }
 
-        if self.cycle == 256 && (self.skanline <= 239) {
-            self.cur_loopy.increment_fine_y();
-        }
+            if self.skanline == 261 && self.cycle >= 1 && self.cycle <= 256 {
+                self.fetching_data_trough_cycles();
+            }
 
-        if self.cycle == 256 && (self.skanline == 261) {
-            self.cur_loopy.increment_coarse_y();
-        }
+            if self.cycle == 256 && (self.skanline <= 239 || self.skanline == 261) {
+                self.cur_addr.increment_fine_y();
+            }
 
-        if self.skanline == 261 && self.cycle >= 1 && self.cycle <= 256 {
-            self.fetching_data_trough_cycles();
-        }
+            if self.cycle == 257 && (self.skanline <= 239 || self.skanline == 261) {
+                self.cur_addr.set_coarse_x(self.tmp_addr.get_coarse_x());
+            }
 
-        if self.skanline == 261 && self.cycle >= 280 && self.cycle <= 304 {
-            self.cur_loopy.set_coarse_y(self.tmp_loopy.get_coarse_y() as u8);
-        }
+            if self.skanline == 261 && self.cycle >= 280 && self.cycle <= 304 {
+                self.cur_addr.set_coarse_y(self.tmp_addr.get_coarse_y());
+                self.cur_addr.set_fine_y(self.tmp_addr.get_fine_y())
+            }
 
-        if self.cycle >= 337 && self.cycle <= 340 && (self.skanline <= 239 || self.skanline == 261) {
-            match self.cycle % 8 {
-                1 | 3 => self.next_background_tile_id = self.read_ppu(self.cur_loopy.get_tile_address()),
-                _ => (),
+            if self.cycle >= 337 && self.cycle <= 340 && (self.skanline <= 239 || self.skanline == 261) {
+                match self.cycle % 8 {
+                    1 | 3 => self.next_background_tile_id = self.read_ppu(self.cur_addr.get_tile_address()),
+                    _ => (),
+                }
             }
         }
 

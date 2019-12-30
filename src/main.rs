@@ -123,6 +123,7 @@ fn main() {
                         device.cpu.reset();
                     }
                     if keycode.unwrap() == Keycode::R {
+                        device.ppu.borrow_mut().reset();
                         device.cpu.reset();
                     }
                     if keycode.unwrap() == Keycode::D {
