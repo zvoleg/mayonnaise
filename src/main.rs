@@ -2,7 +2,6 @@ extern crate sdl2;
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::ops::Deref;
 use std::io::{stdin, stdout, Write};
 
 use sdl2::event::Event;
@@ -16,16 +15,16 @@ use emu::environment::{RecourceHolder, Screen};
 
 struct Device {
     cpu: Emu6502,
-    ppu: Ppu,
+    ppu: Rc<RefCell<Ppu>>,
     bus: Rc<RefCell<Bus>>,
     clock_counter: u32,
 }
 
 impl Device {
     fn new () -> Device {
-        let bus = Rc::new(RefCell::new(Bus::new()));
+        let ppu = Rc::new(RefCell::new(Ppu::new()));
+        let bus = Rc::new(RefCell::new(Bus::new(ppu.clone())));
         let cpu = Emu6502::new(bus.clone());
-        let ppu = Ppu::new(bus.clone());
         Device {
             cpu,
             ppu,
@@ -35,14 +34,12 @@ impl Device {
     }
 
     fn insert_cartridge(&mut self, cartridge: Cartridge) {
-        self.bus.deref().borrow_mut().insert_cartridge(Rc::new(RefCell::new(cartridge)));
+        let cartridge = Rc::new(RefCell::new(cartridge));
+        self.bus.borrow_mut().insert_cartridge(cartridge.clone());
+        self.ppu.borrow_mut().insert_cartridge(cartridge.clone());
         self.cpu.reset();
-        self.ppu.read_all_sprites(0);
-        self.ppu.read_all_sprites(1);
-    }
-
-    fn print_memory_dump(&self) {
-        self.print_memory_by_address(self.cpu.get_program_counter(), 10);
+        self.ppu.borrow_mut().read_all_sprites(0);
+        self.ppu.borrow_mut().read_all_sprites(1);
     }
 
     fn print_memory_by_address(&self, address: u16, offset: u16) {
@@ -54,12 +51,12 @@ impl Device {
             } else {
                 print!("   ");
             }
-            println!("{:04X} - {:02X}", i, self.bus.deref().borrow_mut().read_cpu_ram(i));
+            println!("{:04X} - {:02X}", i, self.bus.borrow_mut().read_cpu_ram(i));
         }
     }
 
     fn read_pixel_pattern_table(&self, idx: usize, table: u8) -> u32 {
-        let pattern = &self.ppu.get_pattern_table(table);
+        let pattern = &self.ppu.borrow().get_pattern_table(table);
         match pattern[idx] {
             0 => 0x222222,
             1 => 0x5555AA,
@@ -70,12 +67,15 @@ impl Device {
     }
 
     fn clock(&mut self) -> Option<u32> {
-        let color = self.ppu.clock();
-        let (res, _) = self.clock_counter.overflowing_add(1);
-        self.clock_counter = res;
+        let color = self.ppu.borrow_mut().clock();
         if self.clock_counter % 3 == 0 {
             self.cpu.clock();
         }
+        if self.ppu.borrow().nmi_require() {
+            self.cpu.nmi();
+            self.ppu.borrow_mut().reset_nmi_require();
+        }
+        self.clock_counter = self.clock_counter.overflowing_add(1).0;
         color
     }
 }
@@ -85,7 +85,7 @@ fn main() {
     let  (mut recource_holder, canvas) = RecourceHolder::init(pixel_size);
     let mut screen = Screen::new(&mut recource_holder, canvas, pixel_size);
 
-    let cart = Cartridge::new("Test.nes");
+    let cart = Cartridge::new("dk.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
@@ -96,7 +96,10 @@ fn main() {
         }
     }
 
+    screen.update();
+
     let mut auto = false;
+    let mut by_frame = false;
     let mut manual_clock = false;
     let mut event_pump = screen.get_events();
     'lock: loop {
@@ -113,11 +116,19 @@ fn main() {
                         auto = !auto;
                         println!("auto mode: {}", auto);
                     }
+                    if keycode.unwrap() == Keycode::F {
+                        by_frame = true;
+                    }
                     if keycode.unwrap() == Keycode::R {
                         device.cpu.reset();
                     }
-                    if keycode.unwrap() == Keycode::M {
-                        device.print_memory_dump();
+                    if keycode.unwrap() == Keycode::R {
+                        device.ppu.borrow_mut().reset();
+                        device.cpu.reset();
+                    }
+                    if keycode.unwrap() == Keycode::D {
+                        let debug = device.cpu.get_debug();
+                        device.cpu.set_debug(!debug);
                     }
                     if keycode.unwrap() == Keycode::V {
                         let mut input = String::new();
@@ -129,33 +140,62 @@ fn main() {
                             Err(_)  => println!("index must be in hex format"),
                         }
                     }
+                    if keycode.unwrap() == Keycode::S {
+                        let mut input = String::new();
+                        stdout().flush().unwrap();
+                        stdin().read_line(&mut input).unwrap();
+                        let mut address = 0;
+                        let mut data = 0;
+                        for (i, part) in input.split_whitespace().enumerate() {
+                            match i {
+                                0 => address = u16::from_str_radix(part.trim(), 16).unwrap(),
+                                1 => data = u8::from_str_radix(part.trim(), 16).unwrap(),
+                                _ => ()
+                            }
+                        }
+                        device.bus.borrow_mut().write_cpu_ram(address, data);
+                    }
+                    if keycode.unwrap() == Keycode::Num1 {
+                        device.ppu.borrow().read_name_table(0);
+                    }
+                    if keycode.unwrap() == Keycode::Num2 {
+                        device.ppu.borrow().read_name_table(1);
+                    }
                 },
                 _ => ()
             }
         }
 
         if auto {
-            while !device.ppu.nmi_require() {
+            while !device.ppu.borrow().frame_complete() {
                 match device.clock() {
                     Some(color) => screen.set_point_at_main_area(color),
                     None => (),
                 }
             }
-            if device.ppu.nmi_require() {
-                screen.update();
-                device.cpu.nmi();
-                device.ppu.reset_nmi();
+            screen.update();
+            device.ppu.borrow_mut().reset_frame_complete_status();
+            device.cpu.reset_complete_status();
+        } else if by_frame {
+            while !device.ppu.borrow().frame_complete() {
+                match device.clock() {
+                    Some(color) => screen.set_point_at_main_area(color),
+                    None => (),
+                }
             }
+            by_frame = false;
+            screen.update();
+            device.ppu.borrow_mut().reset_frame_complete_status();
+            device.cpu.reset_complete_status();
         } else if manual_clock {
-            match device.clock() {
-                Some(color) => screen.set_point_at_main_area(color),
-                None => (),
+            while !device.cpu.clock_is_complete() {
+                match device.clock() {
+                    Some(color) => screen.set_point_at_main_area(color),
+                    None => (),
+                }
             }
             screen.update();
-            if device.ppu.nmi_require() {
-                device.cpu.nmi();
-                device.ppu.reset_nmi();
-            }
+            device.cpu.reset_complete_status();
             manual_clock = false;
         }
     }
