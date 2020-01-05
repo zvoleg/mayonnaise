@@ -347,6 +347,26 @@ impl<'a> Ppu {
             self.high_attribute_shift_register = 0;
     }
 
+    pub fn cpu_read_only(&self, address: u16) -> u8 {
+        let mut data = 0;
+        match address {
+            0x0000 => (),
+            0x0001 => (),
+            0x0002 => {
+                data = self.status.data;
+            },
+            0x0003 => (),
+            0x0004 => (),
+            0x0005 => (),
+            0x0006 => (),
+            0x0007 => {
+                data = self.data_buffer;
+            },
+            _ => panic!("wrong addres when cpu try read ppu registers, address: {:04X}", address),
+        };
+        data
+    }
+
     pub fn cpu_read(&mut self, address: u16) -> u8 {
         let mut data;
         match address {
@@ -594,14 +614,14 @@ impl<'a> Ppu {
             if self.control.nmi_flag() {
                 self.nmi_require = true;
             }
-            println!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tloopy: {:04X} | cloopy: {:04X}",
-                self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
+            // println!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
+            //     self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
         }
         if self.skanline == 261 && self.cycle == 1 {
             self.status.set_vblank(false);
             self.vblank = false;
-            println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tloopy: {:04X} | cloopy: {:04X}",
-            self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
+            // println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
+            //     self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
         }
         let mut color = None;
 

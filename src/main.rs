@@ -11,11 +11,13 @@ use emu::emu6502::Emu6502;
 use emu::ppu::Ppu;
 use emu::bus::Bus;
 use emu::program::Cartridge;
-use emu::environment::{RecourceHolder, Screen};
+use emu::environment::screen::{RecourceHolder, Screen};
+use emu::environment::control::Controller;
 
 struct Device {
     cpu: Emu6502,
     ppu: Rc<RefCell<Ppu>>,
+    controller_a: Rc<RefCell<Controller>>,
     bus: Rc<RefCell<Bus>>,
     clock_counter: u32,
 }
@@ -23,11 +25,13 @@ struct Device {
 impl Device {
     fn new () -> Device {
         let ppu = Rc::new(RefCell::new(Ppu::new()));
-        let bus = Rc::new(RefCell::new(Bus::new(ppu.clone())));
+        let controller_a = Rc::new(RefCell::new(Controller::new()));
+        let bus = Rc::new(RefCell::new(Bus::new(ppu.clone(), controller_a.clone())));
         let cpu = Emu6502::new(bus.clone());
         Device {
             cpu,
             ppu,
+            controller_a,
             bus,
             clock_counter: 0
         }
@@ -51,7 +55,7 @@ impl Device {
             } else {
                 print!("   ");
             }
-            println!("{:04X} - {:02X}", i, self.bus.borrow_mut().read_cpu_ram(i));
+            println!("{:04X} - {:02X}", i, self.bus.borrow().read_only_data(i));
         }
     }
 
@@ -98,8 +102,10 @@ fn main() {
 
     screen.update();
 
+    let mut clock_num_offset = 0;
+    let mut clock_by_num = false;
     let mut auto = false;
-    let mut by_frame = false;
+    let mut clock_by_frame = false;
     let mut manual_clock = false;
     let mut event_pump = screen.get_events();
     'lock: loop {
@@ -114,13 +120,14 @@ fn main() {
                     }
                     if keycode.unwrap() == Keycode::A {
                         auto = !auto;
+                        clock_by_num = false;
+                        clock_by_frame = false;
                         println!("auto mode: {}", auto);
                     }
                     if keycode.unwrap() == Keycode::F {
-                        by_frame = true;
-                    }
-                    if keycode.unwrap() == Keycode::R {
-                        device.cpu.reset();
+                        clock_by_frame = true;
+                        clock_by_num = false;
+                        auto = false;
                     }
                     if keycode.unwrap() == Keycode::R {
                         device.ppu.borrow_mut().reset();
@@ -155,11 +162,70 @@ fn main() {
                         }
                         device.bus.borrow_mut().write_cpu_ram(address, data);
                     }
+                    if keycode.unwrap() == Keycode::N {
+                        clock_by_num = true;
+                        clock_by_frame = false;
+                        auto = false;
+                        let mut input = String::new();
+                        stdout().flush().unwrap();
+                        stdin().read_line(&mut input).unwrap();
+                        clock_num_offset = match input.trim().parse::<u32>() {
+                            Ok(num) => num,
+                            Err(_) => {
+                                clock_by_num = false;
+                                0
+                            },
+                        }
+                    }
+                    if keycode.unwrap() == Keycode::I {
+                        let mut input = String::new();
+                        stdout().flush().unwrap();
+                        stdin().read_line(&mut input).unwrap();
+                        let input_value = match u8::from_str_radix(input.trim(), 16) {
+                            Ok(value) => value,
+                            Err(_) => 0,
+                        };
+                        device.bus.borrow_mut().write_input_value(input_value);
+                    }
+                    if keycode.unwrap() == Keycode::P {
+                        let mut input = String::new();
+                        stdout().flush().unwrap();
+                        stdin().read_line(&mut input).unwrap();
+                        let address = match u16::from_str_radix(input.trim(), 16) {
+                            Ok(value) => value,
+                            Err(_) => 0,
+                        };
+                        device.cpu.set_programm_counter(address);
+                    }
                     if keycode.unwrap() == Keycode::Num1 {
                         device.ppu.borrow().read_name_table(0);
                     }
                     if keycode.unwrap() == Keycode::Num2 {
                         device.ppu.borrow().read_name_table(1);
+                    }
+                    if keycode.unwrap() == Keycode::Up {
+                        device.controller_a.as_ref().borrow_mut().update_register(0x10);
+                    }
+                    if keycode.unwrap() == Keycode::Down {
+                        device.controller_a.as_ref().borrow_mut().update_register(0x20);
+                    }
+                    if keycode.unwrap() == Keycode::Left {
+                        device.controller_a.as_ref().borrow_mut().update_register(0x40);
+                    }
+                    if keycode.unwrap() == Keycode::Right {
+                        device.controller_a.as_ref().borrow_mut().update_register(0x80);
+                    }
+                    if keycode.unwrap() == Keycode::Z { // button A
+                        device.controller_a.as_ref().borrow_mut().update_register(0x01);
+                    }
+                    if keycode.unwrap() == Keycode::X { // button B
+                        device.controller_a.as_ref().borrow_mut().update_register(0x02);
+                    }
+                    if keycode.unwrap() == Keycode::LCtrl { // button SELECT
+                        device.controller_a.as_ref().borrow_mut().update_register(0x04);
+                    }
+                    if keycode.unwrap() == Keycode::Space { // button START
+                        device.controller_a.as_ref().borrow_mut().update_register(0x08);
                     }
                 },
                 _ => ()
@@ -172,21 +238,44 @@ fn main() {
                     Some(color) => screen.set_point_at_main_area(color),
                     None => (),
                 }
+                if device.controller_a.borrow().input_access() {
+                    break;
+                }
             }
-            screen.update();
-            device.ppu.borrow_mut().reset_frame_complete_status();
-            device.cpu.reset_complete_status();
-        } else if by_frame {
+            if device.ppu.borrow().frame_complete() {
+                screen.update();
+                device.ppu.borrow_mut().reset_frame_complete_status();
+                device.cpu.reset_complete_status();
+            }
+        } else if clock_by_frame {
             while !device.ppu.borrow().frame_complete() {
                 match device.clock() {
                     Some(color) => screen.set_point_at_main_area(color),
                     None => (),
                 }
+                if device.controller_a.borrow().input_access() {
+                    break;
+                }
             }
-            by_frame = false;
+            if device.ppu.borrow().frame_complete() {
+                clock_by_frame = false;
+                screen.update();
+                device.ppu.borrow_mut().reset_frame_complete_status();
+                device.cpu.reset_complete_status();
+            }
+        } else if clock_by_num {
+            let current_clock = device.clock_counter;
+            while device.clock_counter < current_clock + clock_num_offset {
+                match device.clock() {
+                    Some(color) => screen.set_point_at_main_area(color),
+                    None => (),
+                }
+            }
+            clock_by_num = false;
+            clock_num_offset = 0;
             screen.update();
-            device.ppu.borrow_mut().reset_frame_complete_status();
             device.cpu.reset_complete_status();
+            device.ppu.borrow_mut().reset_frame_complete_status();
         } else if manual_clock {
             while !device.cpu.clock_is_complete() {
                 match device.clock() {

@@ -40,10 +40,10 @@ const OPCODES: [Op<'static>; 256] = [
 enum Flag {
     C = 1 << 0, // Cary
     Z = 1 << 1, // Zero
-    I = 1 << 2, // Interrupt
+    I = 1 << 2, // Interrupt Disable
     D = 1 << 3, // Decimal
-    B = 1 << 4,// Break
-    U = 1 << 5,// Unused
+    B = 1 << 4, // Break
+    U = 1 << 5, // Unused
     V = 1 << 6, // Overflow
     S = 1 << 7  // Sign
 }
@@ -79,7 +79,7 @@ impl Emu6502 {
             x: 0,
             y: 0,
 
-            status: 32,
+            status: 0x20,
             stack_ptr: 0xFF,
             prog_counter: 0,
 
@@ -97,6 +97,10 @@ impl Emu6502 {
         }
     }
 
+    pub fn set_programm_counter(&mut self, address: u16) {
+        self.prog_counter = address;
+    }
+
     pub fn get_program_counter(&self) -> u16 {
         self.prog_counter
     }
@@ -109,8 +113,8 @@ impl Emu6502 {
 
             if self.debug {
                 print!(
-                    "a={:02X} x={:02X} y={:02X} st={:08b} pc={:04X} st_ptr={:02X}\t| opcode {:02X}: {} {} ",
-                    self.acc, self.x, self.y, self.status, self.prog_counter, self.stack_ptr,
+                    "a={:02X} x={:02X} y={:02X} st={:08b}({:02X}) pc={:04X} st_ptr={:02X}\t| opcode {:02X}: {} {} ",
+                    self.acc, self.x, self.y, self.status, self.status, self.prog_counter, self.stack_ptr,
                     self.opcode, op.instruction_name, op.addressing_mode_name
                 );
             }
@@ -123,11 +127,11 @@ impl Emu6502 {
                     && op.instruction_name != "BIT"
                     && op.instruction_name != "BRK"
                 {
-                    println!("{}", self.addr_offset as i16);
+                    print!("{} ", self.addr_offset as i16);
                 } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
                     println!("");
                 } else {
-                    println!("{:04X}", self.address);
+                    println!("{:04X} = {:02X}", self.address, self.bus.borrow().read_only_data(self.address));
                 }
             }
 
@@ -159,7 +163,9 @@ impl Emu6502 {
     }
 
     pub fn irq(&mut self) {
-        self.BRK();
+        if self.get_flag(Flag::I) == 0 {
+            self.BRK();
+        }
     }
 
     pub fn nmi(&mut self) { // non-maskable interrupt
@@ -227,6 +233,9 @@ impl Emu6502 {
     }
 
     fn branching_instruction(&mut self) {
+        if self.debug {
+            print!("branching operation processed");
+        }
         self.cycle_counter += 1;
         let new_prog_counter = self.prog_counter.overflowing_add(self.addr_offset).0;
         if (new_prog_counter & 0xFF00) != (self.prog_counter & 0xFF00) {
@@ -303,28 +312,29 @@ impl Emu6502 {
         self.prog_counter += 1;
         let indirect_high = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let indirect_address = ((indirect_high as u16) << 8) | indirect_low as u16;
-        let low = self.read_data(indirect_address);
-        let high = self.read_data(indirect_address + 1);
+        let address_low_byte = ((indirect_high as u16) << 8) | indirect_low as u16;
+        let address_high_byte = (address_low_byte & 0xFF00) | (address_low_byte + 1) & 0x00FF;
+        let low = self.read_data(address_low_byte);
+        let high = self.read_data(address_high_byte);
         self.address = ((high as u16) << 8) | low as u16;
     }
 
     fn IDX(&mut self) {
         let base_low = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let indirect_low = base_low.overflowing_add(self.x).0 as u16;
+        let indirect_low = base_low.overflowing_add(self.x).0;
         let indirect_high = indirect_low.overflowing_add(1).0;
-        let low = self.read_data(indirect_low);
-        let high = self.read_data(indirect_high);
+        let low = self.read_data(indirect_low as u16);
+        let high = self.read_data(indirect_high as u16);
         self.address = ((high as u16) << 8) | low as u16;
     }
 
     fn IDY(&mut self) {
         let zero_page_addr = self.read_data(self.prog_counter);
         self.prog_counter += 1;
-        let next_byte = zero_page_addr.overflowing_add(1).0 as u16;
+        let next_byte = zero_page_addr.overflowing_add(1).0;
         let low = self.read_data(zero_page_addr as u16);
-        let high = self.read_data(next_byte);
+        let high = self.read_data(next_byte as u16);
         let result_address = ((high as u16) << 8) | low as u16;
         self.address = result_address.overflowing_add(self.y as u16).0;
         if (self.address & 0xFF00) != ((high as u16) << 8) {
@@ -360,7 +370,7 @@ impl Emu6502 {
         let add_value = self.fetch().overflowing_add(self.get_flag(Flag::C)).0;
         let (result, overflow) = self.acc.overflowing_add(add_value);
         self.set_flag(Flag::C, overflow);
-        self.set_flag(Flag::V, overflow);
+        self.set_flag(Flag::V, (self.acc & 0x80 == self.fetched_data & 0x80) && (self.acc & 0x80 != result & 0x80));
         self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0x0000);
         self.acc = result;
@@ -369,10 +379,10 @@ impl Emu6502 {
     fn SBC(&mut self) { // subtract with carry
         self.cycle_counter += self.additional_cycles;
         self.fetch();
-        let operand = !self.fetched_data + self.get_flag(Flag::C);
-        let (result, overflow) = self.acc.overflowing_add(operand);
-        self.set_flag(Flag::C, overflow);
-        self.set_flag(Flag::V, overflow);
+        let operand = (!self.fetched_data).overflowing_add(self.get_flag(Flag::C)).0;
+        let result = self.acc.overflowing_add(operand).0;
+        self.set_flag(Flag::C, result == 0 || result & 0x80 == 0);
+        self.set_flag(Flag::V, (self.acc & 0x80 == operand & 0x80) && (self.acc & 0x80 != result & 0x80));
         self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0);
         self.acc = result;
@@ -435,11 +445,17 @@ impl Emu6502 {
         if self.get_flag(Flag::S) == 1 {
             self.branching_instruction();
         }
+        if self.debug {
+            println!("");
+        }
     }
 
     fn BPL(&mut self) { // branch if plus
         if self.get_flag(Flag::S) == 0 {
             self.branching_instruction();
+        }
+        if self.debug {
+            println!("");
         }
     }
 
@@ -447,11 +463,17 @@ impl Emu6502 {
         if self.get_flag(Flag::C) == 0 {
             self.branching_instruction();
         }
+        if self.debug {
+            println!("");
+        }
     }
 
     fn BCS(&mut self) { // branch if carry set
         if self.get_flag(Flag::C) == 1 {
             self.branching_instruction();
+        }
+        if self.debug {
+            println!("");
         }
     }
 
@@ -459,11 +481,17 @@ impl Emu6502 {
         if self.get_flag(Flag::Z) == 1 {
             self.branching_instruction();
         }
+        if self.debug {
+            println!("");
+        }
     }
 
     fn BNE(&mut self) { // branch if not zero
         if self.get_flag(Flag::Z) == 0 {
             self.branching_instruction();
+        }
+        if self.debug {
+            println!("");
         }
     }
 
@@ -471,11 +499,17 @@ impl Emu6502 {
         if self.get_flag(Flag::V) == 1 {
             self.branching_instruction();
         }
+        if self.debug {
+            println!("");
+        }
     }
 
     fn BVC(&mut self) { // branch if overflow reset
         if self.get_flag(Flag::V) == 0 {
             self.branching_instruction();
+        }
+        if self.debug {
+            println!("");
         }
     }
 
@@ -483,10 +517,10 @@ impl Emu6502 {
         self.cycle_counter += self.additional_cycles;
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let result = self.acc.overflowing_add(invert_fetched_data).0;
+        let (result, overflow) = self.acc.overflowing_add(invert_fetched_data);
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.acc & 0x80));
+        self.set_flag(Flag::C, result == 0 || overflow || (self.acc == 0x80 && self.fetched_data == 0));
     }
 
     fn BIT(&mut self) {
@@ -546,19 +580,19 @@ impl Emu6502 {
     fn CPX(&mut self) { // compare x to memory
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let result = self.x.overflowing_add(invert_fetched_data).0;
+        let (result, overflow) = self.x.overflowing_add(invert_fetched_data);
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.x & 0x80));
+        self.set_flag(Flag::C, result == 0 || overflow || (self.x == 0x80 && self.fetched_data == 0));
     }
 
     fn CPY(&mut self) { // compare y to memory
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let result = self.y.overflowing_add(invert_fetched_data).0;
+        let (result, overflow) = self.y.overflowing_add(invert_fetched_data);
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || (result & 0x80 != self.y & 0x80));
+        self.set_flag(Flag::C, result == 0 || overflow || (self.y == 0x80 && self.fetched_data == 0));
     }
 
     fn TAX(&mut self) { // transfer accumulator to x
@@ -627,6 +661,7 @@ impl Emu6502 {
 
     fn PLP(&mut self) { // pop status register from stack
         self.status = self.pop_from_stack();
+        self.set_flag(Flag::U, true);
     }
 
     fn LSR(&mut self) { // logical shift right
@@ -644,7 +679,7 @@ impl Emu6502 {
 
     fn ASL(&mut self) { // arithmetic shift left
         self.fetch();
-        let poped_bit = (self.fetched_data & 0x80) >> 7;
+        let poped_bit = self.fetched_data >> 7;
         let result = self.fetched_data << 1;
         match self.opcode {
             0x0A => self.acc = result,
@@ -657,30 +692,28 @@ impl Emu6502 {
 
     fn ROL(&mut self) { // rotate left
         self.fetch();
-        let poped_bit = (self.fetched_data & 0x80) >> 7;
         let carry_value = self.get_flag(Flag::C);
         let result = (self.fetched_data << 1) | carry_value;
-        match self.opcode {
-            0x6A => self.acc = result,
-            _ => self.write_data(result),
-        };
-        self.set_flag(Flag::C, poped_bit == 1);
-        self.set_flag(Flag::Z, result == 0);
-        self.set_flag(Flag::S, (result & 0x80) == 0);
-    }
-
-    fn ROR(&mut self) { // rotate right
-        self.fetch();
-        let poped_bit = self.fetched_data & 1;
-        let carry_value = self.get_flag(Flag::C);
-        let result = (self.fetched_data >> 1) | (carry_value << 7);
         match self.opcode {
             0x2A => self.acc = result,
             _ => self.write_data(result),
         };
-        self.set_flag(Flag::C, poped_bit == 1);
+        self.set_flag(Flag::C, self.fetched_data & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0);
-        self.set_flag(Flag::S, (result & 0x80) == 0);
+        self.set_flag(Flag::S, (result & 0x80) != 0);
+    }
+
+    fn ROR(&mut self) { // rotate right
+        self.fetch();
+        let carry_value = self.get_flag(Flag::C);
+        let result = (self.fetched_data >> 1) | (carry_value << 7);
+        match self.opcode {
+            0x6A => self.acc = result,
+            _ => self.write_data(result),
+        };
+        self.set_flag(Flag::C, self.fetched_data & 0x01 != 0);
+        self.set_flag(Flag::Z, result == 0);
+        self.set_flag(Flag::S, (result & 0x80) != 0);
     }
 
     fn INC(&mut self) { // increment memory by one
