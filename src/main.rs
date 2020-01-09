@@ -137,6 +137,10 @@ fn main() {
                         let debug = device.cpu.get_debug();
                         device.cpu.set_debug(!debug);
                     }
+                    if keycode.unwrap() == Keycode::E {
+                        let debug = device.ppu.borrow().get_debug();
+                        device.ppu.borrow_mut().set_debug(!debug);
+                    }
                     if keycode.unwrap() == Keycode::V {
                         let mut input = String::new();
                         stdout().flush().unwrap();

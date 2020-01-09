@@ -122,7 +122,7 @@ impl<'a> Area<'a> {
         let buff = &self.buffer;
         self.texture.with_lock(None, |buffer: &mut [u8], _pitch: usize| {
             for (i, color) in buff.iter().enumerate() {
-                let (r, g, b) = color.rgb();
+                let (b, g, r) = color.rgb();
                 let idx = i * 3;
                 buffer[idx] = r;
                 buffer[idx + 1] = g;

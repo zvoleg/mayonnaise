@@ -71,7 +71,9 @@ impl Bus {
         } else if address == 0x4016 {
             self.controller_a.as_ref().borrow_mut().set_latch((data & 0x01) != 0);
         } else if address >= 0x4020 {
-            // cartrige space, maybe need access to mapper
+            println!("try write to cartridge {:04X} -> {:02X}", address, data);
+            self.cartridge.as_ref().unwrap().borrow_mut().
+                write_to_prg_rom(address, data);
         }
     }
 

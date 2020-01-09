@@ -75,6 +75,10 @@ impl Mask {
     fn background_enable(&self) -> bool {
         self.data & 0x08 != 0
     }
+
+    fn grayscale_mode(&self) -> bool {
+        self.data & 0x01 != 0
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -156,7 +160,7 @@ impl AddresRegister {
     }
 
     fn set_high_address(&mut self, data: u8) {
-        let high_address = (data & 0x3f) as u16;
+        let high_address = (data & 0x3F) as u16;
         self.data &= 0x00FF; // clear high 8 bits
         self.data |= high_address << 8;
     }
@@ -230,6 +234,8 @@ pub struct Ppu {
     high_pattern_shift_register:   u16,
     low_attribute_shift_register:  u16,
     high_attribute_shift_register: u16,
+
+    debug: bool,
 }
 
 impl<'a> Ppu {
@@ -277,6 +283,8 @@ impl<'a> Ppu {
             high_pattern_shift_register:   0,
             low_attribute_shift_register:  0,
             high_attribute_shift_register: 0,
+
+            debug: false,
         }
     }
 
@@ -480,6 +488,9 @@ impl<'a> Ppu {
         } else if address >= 0x3F00 && address < 0x3FFF {
             let address = address & 0x001F;
             data = self.pallette[address as usize];
+            if self.mask.grayscale_mode() {
+                data &= 0x30;
+            }
         }
         data
     }
@@ -516,7 +527,25 @@ impl<'a> Ppu {
             }
         } else if address >= 0x3F00 && address < 0x3FFF {
             let address = address & 0x001F;
-            self.pallette[address as usize] = data;
+            match address & 0x000F {
+                0x0 => {
+                    self.pallette[0x0000] = data;
+                    self.pallette[0x0010] = data;
+                },
+                0x4 => {
+                    self.pallette[0x0004] = data;
+                    self.pallette[0x0014] = data;
+                },
+                0x8 => {
+                    self.pallette[0x0008] = data;
+                    self.pallette[0x0018] = data;
+                },
+                0xC => {
+                    self.pallette[0x000C] = data;
+                    self.pallette[0x001C] = data;
+                },
+                _ => self.pallette[address as usize] = data,
+            }
         }
     }
 
@@ -544,6 +573,14 @@ impl<'a> Ppu {
 
     pub fn reset_nmi_require(&mut self) {
         self.nmi_require = false;
+    }
+
+    pub fn get_debug(&self) -> bool {
+        self.debug
+    }
+
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
     }
 
     pub fn read_all_sprites(&mut self, table: u8) {
@@ -608,20 +645,36 @@ impl<'a> Ppu {
     }
 
     pub fn clock(&mut self) -> Option<u32> {
+        if self.debug {
+            println!(
+                "coarse_x: {:02} | coarse y: {:02} | fine x: {:02} | fine y: {:02} | name_tabel: {:02} | full register: {:015b} | tmp register: {:015b}",
+                self.cur_addr.data & 0x1F,
+                (self.cur_addr.data >> 5) & 0x1F,
+                self.fine_x_scroll,
+                (self.cur_addr.data >> 12) & 0x07,
+                (self.cur_addr.data >> 10) & 0x03,
+                self.cur_addr.data,
+                self.tmp_addr.data
+            );
+        }
         if self.skanline == 241 && self.cycle == 1 {
             self.status.set_vblank(true);
             self.vblank = true;
             if self.control.nmi_flag() {
                 self.nmi_require = true;
             }
-            // println!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
-            //     self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
+            if self.debug {
+            println!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
+                self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
+            }
         }
         if self.skanline == 261 && self.cycle == 1 {
             self.status.set_vblank(false);
             self.vblank = false;
-            // println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
-            //     self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
+            if self.debug {
+                println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
+                    self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
+            }
         }
         let mut color = None;
 
@@ -651,11 +704,15 @@ impl<'a> Ppu {
 
             if self.cycle == 257 && (self.skanline <= 239 || self.skanline == 261) {
                 self.cur_addr.set_coarse_x(self.tmp_addr.get_coarse_x());
+                let x_name_table = (self.tmp_addr.data >> 10) & 0x01;
+                self.cur_addr.data |= x_name_table << 10;
             }
 
             if self.skanline == 261 && self.cycle >= 280 && self.cycle <= 304 {
                 self.cur_addr.set_coarse_y(self.tmp_addr.get_coarse_y());
-                self.cur_addr.set_fine_y(self.tmp_addr.get_fine_y())
+                self.cur_addr.set_fine_y(self.tmp_addr.get_fine_y());
+                let y_name_table = (self.tmp_addr.data >> 11) & 0x01;
+                self.cur_addr.data |= y_name_table << 11;
             }
 
             if self.cycle >= 337 && self.cycle <= 340 && (self.skanline <= 239 || self.skanline == 261) {
