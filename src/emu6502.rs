@@ -517,10 +517,10 @@ impl Emu6502 {
         self.cycle_counter += self.additional_cycles;
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let (result, overflow) = self.acc.overflowing_add(invert_fetched_data);
+        let result = self.acc.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || overflow || (self.acc == 0x80 && self.fetched_data == 0));
+        self.set_flag(Flag::C, self.acc >= self.fetched_data);
     }
 
     fn BIT(&mut self) {
@@ -580,19 +580,19 @@ impl Emu6502 {
     fn CPX(&mut self) { // compare x to memory
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let (result, overflow) = self.x.overflowing_add(invert_fetched_data);
+        let result = self.x.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || overflow || (self.x == 0x80 && self.fetched_data == 0));
+        self.set_flag(Flag::C, self.x >= self.fetched_data);
     }
 
     fn CPY(&mut self) { // compare y to memory
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let (result, overflow) = self.y.overflowing_add(invert_fetched_data);
+        let result = self.y.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || overflow || (self.y == 0x80 && self.fetched_data == 0));
+        self.set_flag(Flag::C, self.y >= self.fetched_data);
     }
 
     fn TAX(&mut self) { // transfer accumulator to x
