@@ -168,7 +168,7 @@ impl AddresRegister {
     fn get_attribute_address(&self) -> u16 {
         let x_offset = (self.get_coarse_x() >> 2) as u16;
         let y_offset = (self.get_coarse_y() >> 2) as u16;
-        0x2000 | self.data & 0x0C00 | 0x03C0 | (y_offset << 3) | x_offset
+        0x23C0 | self.data & 0x0C00 | (y_offset << 3) | x_offset
     }
 
     fn set_high_address(&mut self, data: u8) {
@@ -427,8 +427,16 @@ impl<'a> Ppu {
                     self.control.nmi_flag() {
                     self.nmi_require = true;
                 }
-                if self.debug{
-                    println!("ppu: update CONTROL register: {:02X} ({:08b})", self.control.data, self.control.data);
+                if self.debug {
+                    println!("ppu: update CONTROL register: {:02X} | nmi: {} | sprite size: {} | background pattern tabele: {} | sprite pattern table: {} | vram increment: {} | base nametable address: {}",
+                        self.control.data,
+                        (self.control.data >> 7) & 0x01,
+                        (self.control.data >> 5) & 0x01,
+                        (self.control.data >> 4) & 0x01,
+                        (self.control.data >> 3) & 0x01,
+                        (self.control.data >> 2) & 0x01,
+                        self.control.data & 0x03
+                    );
                 }
             },
             0x0001 => {
@@ -464,6 +472,12 @@ impl<'a> Ppu {
                     self.tmp_addr.set_low_address(data);
                     self.cur_addr = self.tmp_addr;
                     self.latch = !self.latch;
+                    if self.debug {
+                        println!("ppu: update cur_addr register (address): {:04X}", self.tmp_addr.data);
+                    }
+                }
+                if self.debug {
+                    println!("ppu: update tmp_addr register (address): {:04X}", self.tmp_addr.data);
                 }
                 if self.debug{
                     println!("ppu: (scroll) update tmp addr register: {:02X} ({:08b})", self.tmp_addr.data, self.tmp_addr.data);
@@ -531,9 +545,9 @@ impl<'a> Ppu {
                 Mirroring::HORISONTAL => {
                     if address < 0x400 {
                         self.name_table[address] = data;
-                    } else if address >= 0x400 && address < 0x800 {
+                    } else if address >= 0x400 && address < 0x0800 {
                         self.name_table[address & 0x3FF] = data;
-                    } else if address >= 0x800 && address < 0xC00 {
+                    } else if address >= 0x800 && address < 0x0C00 {
                         self.name_table[address & 0x7FF] = data;
                     } else if address >= 0xC00 && address < 0x1000 {
                         self.name_table[address & 0x7FF] = data;
@@ -542,9 +556,9 @@ impl<'a> Ppu {
                 Mirroring::VERTICAL => {
                     if address < 0x400 {
                         self.name_table[address] = data;
-                    } else if address >= 0x400 && address < 0x800 {
+                    } else if address >= 0x400 && address < 0x0800 {
                         self.name_table[address] = data;
-                    } else if address >= 0x800 && address < 0xC00 {
+                    } else if address >= 0x800 && address < 0x0C00 {
                         self.name_table[address & 0x3FF] = data;
                     } else if address >= 0xC00 && address < 0x1000 {
                         self.name_table[address & 0x7FF] = data;
@@ -674,7 +688,7 @@ impl<'a> Ppu {
     pub fn clock(&mut self) -> Option<u32> {
         if self.debug {
             println!(
-                "coarse_x: {:02} | coarse y: {:02} | fine x: {:02} | fine y: {:02} | name_tabel: {:02} | full register: {:015b} | tmp register: {:015b}",
+                "ppu: coarse_x: {:02} | coarse y: {:02} | fine x: {:02} | fine y: {:02} | name_tabel: {:02} | full register: {:015b} | tmp register: {:015b}",
                 self.cur_addr.data & 0x1F,
                 (self.cur_addr.data >> 5) & 0x1F,
                 self.fine_x_scroll,
