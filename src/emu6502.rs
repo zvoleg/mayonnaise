@@ -80,7 +80,7 @@ impl Emu6502 {
             y: 0,
 
             status: 0x20,
-            stack_ptr: 0xFF,
+            stack_ptr: 0xFD,
             prog_counter: 0,
 
             address: 0,
@@ -164,7 +164,18 @@ impl Emu6502 {
 
     pub fn irq(&mut self) {
         if self.get_flag(Flag::I) == 0 {
-            self.BRK();
+            let low = self.prog_counter as u8;
+            let high = (self.prog_counter >> 8) as u8;
+            self.push_to_stack(high);
+            self.push_to_stack(low);
+            self.set_flag(Flag::B, false);
+            self.set_flag(Flag::I, true);
+            self.set_flag(Flag::U, true);
+            self.push_to_stack(self.status);
+            let new_low = self.read_data(0xFFFE);
+            let new_high = self.read_data(0xFFFF);
+            self.prog_counter = ((new_high as u16) << 8) | new_low as u16;
+            self.cycle_counter = 7;
         }
     }
 
@@ -184,6 +195,11 @@ impl Emu6502 {
     }
 
     pub fn reset(&mut self) {
+        self.acc = 0;
+        self.x = 0;
+        self.y = 0;
+        self.stack_ptr = 0xFD;
+        self.status = 0x24;
         let low = self.read_data(0xFFFC);
         let high = self.read_data(0xFFFD);
         self.prog_counter = ((high as u16) << 8) | low as u16;
@@ -517,10 +533,10 @@ impl Emu6502 {
         self.cycle_counter += self.additional_cycles;
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let (result, overflow) = self.acc.overflowing_add(invert_fetched_data);
+        let result = self.acc.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || overflow || (self.acc == 0x80 && self.fetched_data == 0));
+        self.set_flag(Flag::C, self.acc >= self.fetched_data);
     }
 
     fn BIT(&mut self) {
@@ -580,19 +596,19 @@ impl Emu6502 {
     fn CPX(&mut self) { // compare x to memory
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let (result, overflow) = self.x.overflowing_add(invert_fetched_data);
+        let result = self.x.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || overflow || (self.x == 0x80 && self.fetched_data == 0));
+        self.set_flag(Flag::C, self.x >= self.fetched_data);
     }
 
     fn CPY(&mut self) { // compare y to memory
         self.fetch();
         let invert_fetched_data = (!self.fetched_data).overflowing_add(1).0;
-        let (result, overflow) = self.y.overflowing_add(invert_fetched_data);
+        let result = self.y.overflowing_add(invert_fetched_data).0;
         self.set_flag(Flag::Z, result == 0);
         self.set_flag(Flag::S, result & 0x80 != 0);
-        self.set_flag(Flag::C, result == 0 || overflow || (self.y == 0x80 && self.fetched_data == 0));
+        self.set_flag(Flag::C, self.y >= self.fetched_data);
     }
 
     fn TAX(&mut self) { // transfer accumulator to x
@@ -732,6 +748,7 @@ impl Emu6502 {
 
     fn RTI(&mut self) { // return from interrupt
         self.status = self.pop_from_stack();
+        self.set_flag(Flag::B, false);
         let low = self.pop_from_stack();
         let high = self.pop_from_stack();
         self.prog_counter = ((high as u16) << 8) | low as u16;
@@ -742,6 +759,9 @@ impl Emu6502 {
         let high = (self.prog_counter >> 8) as u8;
         self.push_to_stack(high);
         self.push_to_stack(low);
+        self.set_flag(Flag::U, true);
+        self.set_flag(Flag::I, true);
+        self.set_flag(Flag::B, true);
         self.push_to_stack(self.status);
         let new_low = self.read_data(0xFFFE);
         let new_high = self.read_data(0xFFFF);

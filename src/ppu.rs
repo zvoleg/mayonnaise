@@ -111,7 +111,12 @@ impl AddresRegister {
 
     fn increment_coarse_x(&mut self) {
         let coarse_x = self.get_coarse_x();
-        self.set_coarse_x(coarse_x + 1);
+        if coarse_x == 31 {
+            self.set_coarse_x(0);
+            self.data ^= 0x0400;
+        } else {
+            self.set_coarse_x(coarse_x + 1);
+        }
     }
 
     fn set_coarse_y(&mut self, coarse_y: u8) {
@@ -126,7 +131,14 @@ impl AddresRegister {
 
     fn increment_coarse_y(&mut self) {
         let coarse_y = self.get_coarse_y();
-        self.set_coarse_y(coarse_y + 1);
+        if coarse_y == 29 {
+            self.set_coarse_y(0);
+            self.data ^= 0x0800;
+        } else if coarse_y == 31 {
+            self.set_coarse_y(0);
+        } else {
+            self.set_coarse_y(coarse_y + 1);
+        }
     }
 
     fn set_fine_y(&mut self, fine_y: u8) {
@@ -415,9 +427,15 @@ impl<'a> Ppu {
                     self.control.nmi_flag() {
                     self.nmi_require = true;
                 }
+                if self.debug{
+                    println!("ppu: update CONTROL register: {:02X} ({:08b})", self.control.data, self.control.data);
+                }
             },
             0x0001 => {
                 self.mask.data = data;
+                if self.debug{
+                    println!("ppu: update MASK register: {:02X} ({:08b})", self.mask.data, self.mask.data);
+                }
             },
             // 0x0002 => (),
             0x0003 => {
@@ -434,6 +452,9 @@ impl<'a> Ppu {
                     self.tmp_addr.set_fine_y(data & 0x07);
                     self.latch = !self.latch;
                 }
+                if self.debug{
+                    println!("ppu: (scroll) update tmp addr register: {:02X} ({:08b})", self.tmp_addr.data, self.tmp_addr.data);
+                }
             },
             0x0006 => {
                 if !self.latch {
@@ -443,6 +464,10 @@ impl<'a> Ppu {
                     self.tmp_addr.set_low_address(data);
                     self.cur_addr = self.tmp_addr;
                     self.latch = !self.latch;
+                }
+                if self.debug{
+                    println!("ppu: (scroll) update tmp addr register: {:02X} ({:08b})", self.tmp_addr.data, self.tmp_addr.data);
+                    println!("ppu: (scroll) update cur addr register: {:02X} ({:08b})", self.cur_addr.data, self.cur_addr.data);
                 }
             },
             0x0007 => {
@@ -456,6 +481,7 @@ impl<'a> Ppu {
 
     pub fn read_ppu(&self, address: u16) -> u8 {
         let mut data = 0;
+        let address = address & 0x3FFF;
         if address < 0x2000 {
             data = self.read_from_cartridge(address);
         } else if address >= 0x2000 && address < 0x3F00 {
@@ -496,6 +522,7 @@ impl<'a> Ppu {
     }
 
     pub fn write_ppu(&mut self, address: u16, data: u8) {
+        let address = address & 0x3FFF;
         if address < 0x2000 {
             // pattern table, stores on cartridge, only read
         } else if address >= 0x2000 && address < 0x3F00 {
@@ -704,6 +731,7 @@ impl<'a> Ppu {
 
             if self.cycle == 257 && (self.skanline <= 239 || self.skanline == 261) {
                 self.cur_addr.set_coarse_x(self.tmp_addr.get_coarse_x());
+                self.cur_addr.data &= !0x0400;
                 let x_name_table = (self.tmp_addr.data >> 10) & 0x01;
                 self.cur_addr.data |= x_name_table << 10;
             }
@@ -711,6 +739,7 @@ impl<'a> Ppu {
             if self.skanline == 261 && self.cycle >= 280 && self.cycle <= 304 {
                 self.cur_addr.set_coarse_y(self.tmp_addr.get_coarse_y());
                 self.cur_addr.set_fine_y(self.tmp_addr.get_fine_y());
+                self.cur_addr.data &= !0x0800;
                 let y_name_table = (self.tmp_addr.data >> 11) & 0x01;
                 self.cur_addr.data |= y_name_table << 11;
             }
