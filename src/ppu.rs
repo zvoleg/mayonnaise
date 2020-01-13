@@ -370,18 +370,14 @@ impl<'a> Ppu {
     pub fn cpu_read_only(&self, address: u16) -> u8 {
         let mut data = 0;
         match address {
-            0x0000 => (),
-            0x0001 => (),
-            0x0002 => {
-                data = self.status.data;
-            },
+            0x0000 => data = self.control.data,
+            0x0001 => data = self.mask.data,
+            0x0002 => data = self.status.data,
             0x0003 => (),
             0x0004 => (),
             0x0005 => (),
             0x0006 => (),
-            0x0007 => {
-                data = self.data_buffer;
-            },
+            0x0007 => data = self.data_buffer,
             _ => panic!("wrong addres when cpu try read ppu registers, address: {:04X}", address),
         };
         data
@@ -688,13 +684,15 @@ impl<'a> Ppu {
     pub fn clock(&mut self) -> Option<u32> {
         if self.debug {
             println!(
-                "ppu: coarse_x: {:02} | coarse y: {:02} | fine x: {:02} | fine y: {:02} | name_tabel: {:02} | full register: {:015b} | tmp register: {:015b}",
+                "ppu: coarse_x: {:02} | coarse y: {:02} | fine x: {:02} | fine y: {:02} | name_tabel: {:02} | full register: {:015b} ({:04X}) | tmp register: {:015b} ({:04X})",
                 self.cur_addr.data & 0x1F,
                 (self.cur_addr.data >> 5) & 0x1F,
                 self.fine_x_scroll,
                 (self.cur_addr.data >> 12) & 0x07,
                 (self.cur_addr.data >> 10) & 0x03,
                 self.cur_addr.data,
+                self.cur_addr.data,
+                self.tmp_addr.data,
                 self.tmp_addr.data
             );
         }
