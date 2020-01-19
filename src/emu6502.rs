@@ -139,10 +139,10 @@ impl Emu6502 {
             self.cycle_counter = op.cycle_amount;
         } else {
             self.clock_compleate = false;
-            self.cycle_counter -= 1;
-            if self.cycle_counter == 0 {
-                self.clock_compleate = true;
-            }
+        }
+        self.cycle_counter -= 1;
+        if self.cycle_counter == 0 {
+            self.clock_compleate = true;
         }
     }
 
@@ -192,6 +192,9 @@ impl Emu6502 {
         let new_high = self.read_data(0xFFFB);
         self.prog_counter = ((new_high as u16) << 8) | new_low as u16;
         self.cycle_counter = 8;
+        if self.debug {
+            println!("cpu: nmi executing, new prog_counter: {:04X}", self.prog_counter);
+        }
     }
 
     pub fn reset(&mut self) {

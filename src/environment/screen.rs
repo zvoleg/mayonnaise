@@ -32,26 +32,119 @@ pub struct Screen<'a> {
     main_area: Area<'a>,
     sprite_area_left: Area<'a>,
     sprite_area_right: Area<'a>,
+    main_color: Area<'a>,
+    background_pallettes: Vec<Area<'a>>,
+    sprite_pallettes: Vec<Area<'a>>,
     pixel_format: PixelFormat,
 }
 
 impl<'a> Screen<'a> {
     pub fn new(recource_holder: &'a RecourceHolder, canvas: Canvas<Window>, pixel_size: u32) -> Screen<'a> {
+        let main_screen_width = 256;
+        let main_screen_height = 240;
+        let pattern_tabel_width = 128;
+
         let pixel_format = unsafe { PixelFormat::from_ll(sdl2::sys::SDL_AllocFormat(PixelFormatEnum::RGB24 as u32)) };
 
-        let main_texture = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 256, 240).
-            map_err(|e| e.to_string()).unwrap();
-        let main_area = Area::new(main_texture, 0, 0, 256, 240, pixel_size);
+        let main_texture = recource_holder.
+            texture_creator.
+            create_texture_streaming(
+                PixelFormatEnum::RGB24,
+                main_screen_width,
+                main_screen_height).
+            unwrap();
+        let main_area = Area::new(main_texture, 0, 0, main_screen_width, main_screen_height, pixel_size);
 
-        let sprite_texture_left = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 128, 128).
-            map_err(|e| e.to_string()).unwrap();
-        let sprite_area_left = Area::new(sprite_texture_left, (256 * pixel_size + 20) as i32, 0, 128, 128, 2);
+        let sprite_texture_left = recource_holder.
+            texture_creator.
+            create_texture_streaming(
+                PixelFormatEnum::RGB24,
+                pattern_tabel_width,
+                pattern_tabel_width).
+            unwrap();
+        let sprite_area_left = Area::new(
+            sprite_texture_left,
+            (main_screen_width * pixel_size + 20) as i32,
+            0,
+            pattern_tabel_width,
+            pattern_tabel_width,
+            pixel_size);
 
-        let sprite_texture_right = recource_holder.texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 128, 128).
-            map_err(|e| e.to_string()).unwrap();
-        let sprite_area_right = Area::new(sprite_texture_right, ((256 + 128) * pixel_size + 22) as i32, 0, 128, 128, 2);
+        let sprite_texture_right = recource_holder.
+            texture_creator.
+            create_texture_streaming(
+                PixelFormatEnum::RGB24,
+                pattern_tabel_width,
+                pattern_tabel_width).
+            unwrap();
+        let sprite_area_right = Area::new(
+            sprite_texture_right,
+            ((main_screen_width + pattern_tabel_width) * pixel_size + 22) as i32,
+            0,
+            pattern_tabel_width,
+            pattern_tabel_width,
+            pixel_size);
 
-        Screen { recource_holder: recource_holder, canvas, main_area, sprite_area_left, sprite_area_right, pixel_format }
+        let main_color_texture = recource_holder.
+            texture_creator.
+            create_texture_streaming(
+                PixelFormatEnum::RGB24,
+                1,
+                1).
+            unwrap();
+        let main_color = Area::new(
+            main_color_texture,
+            (main_screen_width * pixel_size + 20) as i32,
+            (pattern_tabel_width * pixel_size + 20) as i32,
+            1,
+            1,
+            15);
+
+        let background_pallettes: Vec<Area<'a>> = (0..4).map(|i| {
+            let background_pallette_texture = recource_holder.
+                texture_creator.
+                create_texture_streaming(
+                    PixelFormatEnum::RGB24,
+                    4,
+                    1).
+            unwrap();
+            return Area::new(
+                background_pallette_texture,
+                (main_screen_width * pixel_size + 20) as i32,
+                (pattern_tabel_width * pixel_size + 40 + 20 * i) as i32,
+                4,
+                1,
+                15);
+        }).collect();
+
+        let sprite_pallettes: Vec<Area<'a>> = (0..4).map(|i| {
+            let sprite_pallette_texture = recource_holder.
+            texture_creator.
+            create_texture_streaming(
+                PixelFormatEnum::RGB24,
+                4,
+                1).
+            unwrap();
+            return Area::new(
+                sprite_pallette_texture,
+                (main_screen_width * pixel_size + 100) as i32,
+                (pattern_tabel_width * pixel_size + 40 + 20 * i) as i32,
+                4,
+                1,
+                15);
+        }).collect();
+
+        Screen {
+            recource_holder,
+            canvas,
+            main_area,
+            sprite_area_left,
+            sprite_area_right,
+            pixel_format,
+            main_color,
+            background_pallettes,
+            sprite_pallettes
+         }
     }
 
     pub fn set_point_at_main_area(&mut self, color: u32) {
@@ -66,6 +159,18 @@ impl<'a> Screen<'a> {
         }
     }
 
+    pub fn set_point_at_main_color_area(&mut self, color: u32) {
+        self.main_color.set_next_point(Color::from_u32(&self.pixel_format, color));
+    }
+
+    pub fn set_point_at_background_color_area(&mut self, pallette_id: usize, color: u32) {
+        self.background_pallettes[pallette_id].set_next_point(Color::from_u32(&self.pixel_format, color));
+    }
+
+    pub fn set_point_at_sprite_color_area(&mut self, pallette_id: usize, color: u32) {
+        self.sprite_pallettes[pallette_id].set_next_point(Color::from_u32(&self.pixel_format, color));
+    }
+
     pub fn get_events(&mut self) -> EventPump {
         self.recource_holder.sdl.event_pump().unwrap()
     }
@@ -75,24 +180,28 @@ impl<'a> Screen<'a> {
     }
 
     pub fn update(&mut self) {
-        self.canvas.set_draw_color(Color::RGB(0, 0, 0));
+        self.canvas.set_draw_color(Color::RGB(50, 50, 50));
         self.canvas.clear();
-        self.main_area.update_texture();
-        self.sprite_area_left.update_texture();
-        self.sprite_area_right.update_texture();
-        self.canvas.copy(
-            &self.main_area.texture,
-            None,
-            self.main_area.dst).unwrap();
-        self.canvas.copy(
-            &self.sprite_area_left.texture,
-            None,
-            self.sprite_area_left.dst).unwrap();
-        self.canvas.copy(
-            &self.sprite_area_right.texture,
-            None,
-            self.sprite_area_right.dst).unwrap();
+        Screen::update_canvas(&mut self.canvas, &mut self.main_area);
+        Screen::update_canvas(&mut self.canvas, &mut self.sprite_area_left);
+        Screen::update_canvas(&mut self.canvas, &mut self.sprite_area_right);
+        Screen::update_canvas(&mut self.canvas, &mut self.main_color);
+        (0..4).for_each(|i| {
+            Screen::update_canvas(&mut self.canvas, &mut self.background_pallettes[i])
+        });
+        (0..4).for_each(|i| {
+            Screen::update_canvas(&mut self.canvas, &mut self.sprite_pallettes[i])
+        });
         self.canvas.present();
+    }
+
+    fn update_canvas(canvas: &mut  Canvas<Window>, area: &mut Area<'a>) {
+        area.update_texture();
+        canvas.copy(
+            &area.texture,
+            None,
+            area.dst
+        ).unwrap();
     }
 }
 

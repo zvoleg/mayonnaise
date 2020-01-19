@@ -189,7 +189,7 @@ impl AddresRegister {
 }
 
 pub struct Ppu {
-    pallette_colors: [u32; 0x40],
+    pub pallette_colors: [u32; 0x40],
     patterns: [[u8; 0x4000]; 2], // not necessary for emulation
 
     // 0x2000 - 0x2FFF // (30 line by 32 sprites (960 bytes or 0x03C0) and 2 line with collor) * 4 name-table
@@ -318,7 +318,7 @@ impl<'a> Ppu {
             _ => 0x0000,
         };
         let high_attribute_bit = (self.next_background_attribute >> (attribute_idx_for_tile * 2) + 1) & 0x01;
-        self.high_attribute_shift_register = (self.low_attribute_shift_register & 0xFF00) | match high_attribute_bit {
+        self.high_attribute_shift_register = (self.high_attribute_shift_register & 0xFF00) | match high_attribute_bit {
             1 => 0x00FF,
             _ => 0x0000,
         };
@@ -329,7 +329,7 @@ impl<'a> Ppu {
         let idx3 = (self.low_attribute_shift_register >> 8 + (7 - self.fine_x_scroll)) & 0x01;
         let idx2 = (self.high_pattern_shift_register >> 8 + (7 - self.fine_x_scroll)) & 0x01;
         let idx1 = (self.low_pattern_shift_register >> 8 + (7 - self.fine_x_scroll)) & 0x01;
-        0x3F00 | (idx4 << 3) | (idx3  << 2) | (idx2 << 1) | idx1
+        0x3F00 + ((idx4 << 3) | (idx3  << 2) | (idx2 << 1) | idx1)
     }
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
@@ -389,7 +389,7 @@ impl<'a> Ppu {
             // 0x0000 => (),
             // 0x0001 => (),
             0x0002 => {
-                data = self.status.data;
+                data = (self.status.data & 0xE0) | (self.data_buffer & 0x1F);
                 self.status.set_vblank(false);
                 self.latch = false;
             },
@@ -403,6 +403,7 @@ impl<'a> Ppu {
                 if self.cur_addr.data >= 0x3F00 {
                     data = self.data_buffer;
                 }
+                println!("cpu try read from addr: {:04X} ppu_data: {:02X}", self.cur_addr.data, data);
                 let increment = self.control.get_increment();
                 self.cur_addr.add_increment(increment);
             },
@@ -534,7 +535,7 @@ impl<'a> Ppu {
     pub fn write_ppu(&mut self, address: u16, data: u8) {
         let address = address & 0x3FFF;
         if address < 0x2000 {
-            // pattern table, stores on cartridge, only read
+            println!("try to write into pattern tabel by address: {:04X} data: {:02X}", address, data);
         } else if address >= 0x2000 && address < 0x3F00 {
             let address = (address & 0x0FFF) as usize;
             match self.mirroring {
