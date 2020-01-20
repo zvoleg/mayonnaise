@@ -3,6 +3,7 @@ extern crate rand;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::program::Cartridge;
+use crate::bus::Bus;
 
 enum Mirroring {
     HORISONTAL,
@@ -211,8 +212,10 @@ pub struct Ppu {
     //    4, 3, 2 - unused
     //    1, 0 - higher bits of color
     // 4. x coordinate of sprite (top-left corner)
+    oam_data: [u8; 0x0100],
 
     cartridge: Option<Rc<RefCell<Cartridge>>>,
+    bus: Rc<RefCell<Bus>>,
     mirroring: Mirroring,
 
     pub skanline: u16,
@@ -225,8 +228,8 @@ pub struct Ppu {
     control:     Control,  // 0x2000
     mask:        Mask,     // 0x2001
     status:      Status,   // 0x2002
-    oam_address: u8,       // 0x2003
-    oam_data:    u8,       // 0x2004
+    oam_address_reg: u8,   // 0x2003
+                           // 0x2004 -> oam data register, write data to oam_data array
                            // 0x2005 -> scroll register logic is hiden in loopy register
                            // 0x2006 -> address register logic is hiden in loopy register
                            // 0x2007 -> read/write directly from ppu memory
@@ -247,11 +250,15 @@ pub struct Ppu {
     low_attribute_shift_register:  u16,
     high_attribute_shift_register: u16,
 
+    oam_data_cpu_addres: u16,
+    oam_data_reading_counter: u8,
+    oam_data_reading_enable: bool,
+
     debug: bool,
 }
 
 impl<'a> Ppu {
-    pub fn new() -> Ppu {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> Ppu {
         let pallette_colors = [
             0x545454, 0x001E74, 0x081090, 0x300088, 0x440064, 0x5C0030, 0x540400, 0x3C1800, 0x202A00, 0x083A00, 0x004000, 0x003C00, 0x00323C, 0x000000, 0x000000, 0x000000, 
             0x989698, 0x084CC4, 0x3032EC, 0x5C1EE4, 0x8814B0, 0xA01464, 0x982220, 0x783C00, 0x545A00, 0x287200, 0x087C00, 0x007628, 0x006678, 0x000000, 0x000000, 0x000000,
@@ -263,8 +270,10 @@ impl<'a> Ppu {
             patterns:   [[0; 0x4000]; 2],
             name_table: [0; 0x0800],
             pallette:   [0; 0x0020],
+            oam_data:   [0; 0x0100],
 
             cartridge: None,
+            bus,
             mirroring: Mirroring::UNDEFINED,
 
             skanline:          0,
@@ -277,8 +286,7 @@ impl<'a> Ppu {
             control:           Control::new(0),
             mask:              Mask::new(0),
             status:            Status::new(0),
-            oam_address:       0,
-            oam_data:          0,
+            oam_address_reg:       0,
 
             cur_addr:          AddresRegister::new(),
             tmp_addr:          AddresRegister::new(),
@@ -295,6 +303,10 @@ impl<'a> Ppu {
             high_pattern_shift_register:   0,
             low_attribute_shift_register:  0,
             high_attribute_shift_register: 0,
+
+            oam_data_cpu_addres: 0,
+            oam_data_reading_counter: 0,
+            oam_data_reading_enable: false,
 
             debug: false,
         }
@@ -350,8 +362,7 @@ impl<'a> Ppu {
             self.control = Control::new(0);
             self.mask = Mask::new(0);
             self.status = Status::new(0);
-            self.oam_address = 0;
-            self.oam_data = 0;
+            self.oam_address_reg = 0;
             self.cur_addr = AddresRegister::new();
             self.tmp_addr = AddresRegister::new();
             self.fine_x_scroll = 0;
@@ -444,7 +455,7 @@ impl<'a> Ppu {
             },
             // 0x0002 => (),
             0x0003 => {
-                self.oam_address = data;
+                self.oam_address_reg = data;
             },
             0x0004 => (),
             0x0005 => {
@@ -486,6 +497,11 @@ impl<'a> Ppu {
                 let increment = self.control.get_increment();
                 self.cur_addr.add_increment(increment);
             },
+            0x4014 => {
+                self.oam_data_cpu_addres = (data as u16) << 8;
+                self.oam_data_reading_counter = 0;
+                self.oam_data_reading_enable = true;
+            }
             _ => panic!("wrong addres when cpu try wryte ppu registers, address: {:04X}", address),
         };
     }
@@ -613,6 +629,10 @@ impl<'a> Ppu {
         self.nmi_require = false;
     }
 
+    pub fn reading_oam_data(&self) -> bool {
+        self.oam_data_reading_enable
+    }
+
     pub fn get_debug(&self) -> bool {
         self.debug
     }
@@ -683,6 +703,15 @@ impl<'a> Ppu {
     }
 
     pub fn clock(&mut self) -> Option<u32> {
+        if self.oam_data_reading_enable {
+            let data = self.bus.borrow().
+                read_cpu_ram(self.oam_data_cpu_addres + self.oam_data_reading_counter as u16);
+            self.oam_data[self.oam_data_reading_counter as usize] = data;
+            self.oam_data_reading_counter = self.oam_data_reading_counter.overflowing_add(1).0;
+            if self.oam_data_reading_counter == 0 {
+                self.oam_data_reading_enable = false;
+            }
+        }
         if self.debug {
             println!(
                 "ppu: coarse_x: {:02} | coarse y: {:02} | fine x: {:02} | fine y: {:02} | name_tabel: {:02} | full register: {:015b} ({:04X}) | tmp register: {:015b} ({:04X})",

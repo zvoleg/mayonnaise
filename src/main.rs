@@ -24,10 +24,11 @@ struct Device {
 
 impl Device {
     fn new () -> Device {
-        let ppu = Rc::new(RefCell::new(Ppu::new()));
         let controller_a = Rc::new(RefCell::new(Controller::new()));
-        let bus = Rc::new(RefCell::new(Bus::new(ppu.clone(), controller_a.clone())));
+        let bus = Rc::new(RefCell::new(Bus::new(controller_a.clone())));
+        let ppu = Rc::new(RefCell::new(Ppu::new(bus.clone())));
         let cpu = Emu6502::new(bus.clone());
+        bus.borrow_mut().connect_ppu(ppu.clone());
         Device {
             cpu,
             ppu,
@@ -72,7 +73,7 @@ impl Device {
 
     fn clock(&mut self, screen: &mut Screen) {
         let color = self.ppu.borrow_mut().clock();
-        if self.clock_counter % 3 == 0 {
+        if self.clock_counter % 3 == 0 && !self.ppu.borrow().reading_oam_data() {
             self.cpu.clock();
         }
         if self.ppu.borrow().nmi_require() {
