@@ -212,16 +212,15 @@ pub struct Ppu {
     //    4, 3, 2 - unused
     //    1, 0 - higher bits of color
     // 4. x coordinate of sprite (top-left corner)
-    oam_data: [u8; 0x0100],
+    oam: [u8; 0x0100],
 
     cartridge: Option<Rc<RefCell<Cartridge>>>,
-    bus: Rc<RefCell<Bus>>,
     mirroring: Mirroring,
 
     pub skanline: u16,
     pub cycle:    u16,
 
-    frame_complete: bool,
+    pub frame_complete: bool,
     vblank:         bool,
     nmi_require:    bool,
     // Registers
@@ -250,15 +249,12 @@ pub struct Ppu {
     low_attribute_shift_register:  u16,
     high_attribute_shift_register: u16,
 
-    oam_data_cpu_addres: u16,
-    oam_data_reading_counter: u8,
-    oam_data_reading_enable: bool,
-
-    debug: bool,
+    pub update_pallettes: bool,
+    pub debug: bool,
 }
 
 impl<'a> Ppu {
-    pub fn new(bus: Rc<RefCell<Bus>>) -> Ppu {
+    pub fn new() -> Ppu {
         let pallette_colors = [
             0x545454, 0x001E74, 0x081090, 0x300088, 0x440064, 0x5C0030, 0x540400, 0x3C1800, 0x202A00, 0x083A00, 0x004000, 0x003C00, 0x00323C, 0x000000, 0x000000, 0x000000, 
             0x989698, 0x084CC4, 0x3032EC, 0x5C1EE4, 0x8814B0, 0xA01464, 0x982220, 0x783C00, 0x545A00, 0x287200, 0x087C00, 0x007628, 0x006678, 0x000000, 0x000000, 0x000000,
@@ -270,10 +266,9 @@ impl<'a> Ppu {
             patterns:   [[0; 0x4000]; 2],
             name_table: [0; 0x0800],
             pallette:   [0; 0x0020],
-            oam_data:   [0; 0x0100],
+            oam:        [0; 0x0100],
 
             cartridge: None,
-            bus,
             mirroring: Mirroring::UNDEFINED,
 
             skanline:          0,
@@ -286,7 +281,7 @@ impl<'a> Ppu {
             control:           Control::new(0),
             mask:              Mask::new(0),
             status:            Status::new(0),
-            oam_address_reg:       0,
+            oam_address_reg:   0,
 
             cur_addr:          AddresRegister::new(),
             tmp_addr:          AddresRegister::new(),
@@ -304,10 +299,7 @@ impl<'a> Ppu {
             low_attribute_shift_register:  0,
             high_attribute_shift_register: 0,
 
-            oam_data_cpu_addres: 0,
-            oam_data_reading_counter: 0,
-            oam_data_reading_enable: false,
-
+            update_pallettes: false,
             debug: false,
         }
     }
@@ -497,11 +489,6 @@ impl<'a> Ppu {
                 let increment = self.control.get_increment();
                 self.cur_addr.add_increment(increment);
             },
-            0x4014 => {
-                self.oam_data_cpu_addres = (data as u16) << 8;
-                self.oam_data_reading_counter = 0;
-                self.oam_data_reading_enable = true;
-            }
             _ => panic!("wrong addres when cpu try wryte ppu registers, address: {:04X}", address),
         };
     }
@@ -539,10 +526,18 @@ impl<'a> Ppu {
                 _ => (),
             }
         } else if address >= 0x3F00 && address < 0x3FFF {
-            let address = address & 0x001F;
-            data = self.pallette[address as usize];
-            if self.mask.grayscale_mode() {
-                data &= 0x30;
+            let mut address = (address & 0x001F) as usize;
+            match address {
+                0x0004 | 0x0008 | 0x000C => address = 0x0000,
+                0x0010 => address = 0x0000,
+                0x0014 => address = 0x0004,
+                0x0018 => address = 0x0008,
+                0x001C => address = 0x000C,
+                _ => (),
+            }
+            data = match self.mask.grayscale_mode() {
+                true  => self.pallette[address] & 0x30,
+                false => self.pallette[address]
             }
         }
         data
@@ -581,25 +576,14 @@ impl<'a> Ppu {
             }
         } else if address >= 0x3F00 && address < 0x3FFF {
             let address = address & 0x001F;
-            match address & 0x000F {
-                0x0 => {
-                    self.pallette[0x0000] = data;
-                    self.pallette[0x0010] = data;
-                },
-                0x4 => {
-                    self.pallette[0x0004] = data;
-                    self.pallette[0x0014] = data;
-                },
-                0x8 => {
-                    self.pallette[0x0008] = data;
-                    self.pallette[0x0018] = data;
-                },
-                0xC => {
-                    self.pallette[0x000C] = data;
-                    self.pallette[0x001C] = data;
-                },
+            match address {
+                0x0010 => self.pallette[0x0000] = data,
+                0x0014 => self.pallette[0x0004] = data,
+                0x0018 => self.pallette[0x0008] = data,
+                0x001C => self.pallette[0x000C] = data,
                 _ => self.pallette[address as usize] = data,
             }
+            self.update_pallettes = true;
         }
     }
 
@@ -613,32 +597,12 @@ impl<'a> Ppu {
         self.patterns[table as usize]
     }
 
-    pub fn reset_frame_complete_status(&mut self) {
-        self.frame_complete = false;
-    }
-
-    pub fn frame_complete(&self) -> bool {
-        self.frame_complete
-    }
-
     pub fn nmi_require(&self) -> bool {
         self.nmi_require
     }
 
     pub fn reset_nmi_require(&mut self) {
         self.nmi_require = false;
-    }
-
-    pub fn reading_oam_data(&self) -> bool {
-        self.oam_data_reading_enable
-    }
-
-    pub fn get_debug(&self) -> bool {
-        self.debug
-    }
-
-    pub fn set_debug(&mut self, debug: bool) {
-        self.debug = debug;
     }
 
     pub fn read_all_sprites(&mut self, table: u8) {
@@ -703,15 +667,6 @@ impl<'a> Ppu {
     }
 
     pub fn clock(&mut self) -> Option<u32> {
-        if self.oam_data_reading_enable {
-            let data = self.bus.borrow().
-                read_cpu_ram(self.oam_data_cpu_addres + self.oam_data_reading_counter as u16);
-            self.oam_data[self.oam_data_reading_counter as usize] = data;
-            self.oam_data_reading_counter = self.oam_data_reading_counter.overflowing_add(1).0;
-            if self.oam_data_reading_counter == 0 {
-                self.oam_data_reading_enable = false;
-            }
-        }
         if self.debug {
             println!(
                 "ppu: coarse_x: {:02} | coarse y: {:02} | fine x: {:02} | fine y: {:02} | name_tabel: {:02} | full register: {:015b} ({:04X}) | tmp register: {:015b} ({:04X})",

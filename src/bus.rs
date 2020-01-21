@@ -7,18 +7,28 @@ use crate::environment::control::Controller;
 
 pub struct Bus {
     cpu_ram: [u8; 0x0800],
-    ppu: Option<Rc<RefCell<Ppu>>>,
+    ppu: Rc<RefCell<Ppu>>,
     controller_a: Rc<RefCell<Controller>>,
     cartridge: Option<Rc<RefCell<Cartridge>>>,
+
+    dma_enable: bool,
+    oam_addr: u8,
+    oam_step: u8,
+    oam_data: u8,
 }
 
 impl Bus {
-    pub fn new(controller_a: Rc<RefCell<Controller>>) -> Bus {
+    pub fn new(controller_a: Rc<RefCell<Controller>>, ppu: Rc<RefCell<Ppu>>) -> Bus {
         Bus {
             cpu_ram: [0; 0x0800],
-            ppu: None,
+            ppu,
             controller_a,
             cartridge: None,
+
+            dma_enable: false,
+            oam_addr: 0,
+            oam_step: 0,
+            oam_data: 0,
         }
     }
 
@@ -32,7 +42,7 @@ impl Bus {
         if address <= 0x1FFF {
             data = self.cpu_ram[(address & 0x07FF) as usize];
         } else if address >= 0x2000 && address <= 0x3FFF {
-            data = self.ppu.as_ref().unwrap().borrow().
+            data = self.ppu.borrow().
                 cpu_read_only(address & 0x0007);
         } else if address == 0x4016 {
             data = self.controller_a.as_ref().borrow_mut().read_register();
@@ -50,7 +60,7 @@ impl Bus {
         if address <= 0x1FFF {
             data = self.cpu_ram[(address & 0x07FF) as usize];
         } else if address >= 0x2000 && address <= 0x3FFF {
-            data = self.ppu.as_ref().unwrap().borrow_mut().
+            data = self.ppu.borrow_mut().
                 cpu_read(address & 0x0007);
         } else if address == 0x4016 {
             data = self.controller_a.as_ref().borrow_mut().read_bit();
@@ -67,12 +77,15 @@ impl Bus {
         if address <= 0x1FFF {
             self.cpu_ram[(address & 0x07FF) as usize] = data;
         } else if address >= 0x2000 && address <= 0x3FFF {
-            self.ppu.as_ref().unwrap().borrow_mut().
+            self.ppu.borrow_mut().
                 cpu_write(address & 0x0007, data);
+        } else if address == 0x4014 {
+            self.dma_enable = true;
+            self.oam_addr = 0;
         } else if address == 0x4016 {
             self.controller_a.as_ref().borrow_mut().set_latch((data & 0x01) != 0);
         } else if address >= 0x4020 {
-            println!("try write to cartridge {:04X} -> {:02X}", address, data);
+            println!("cpu: try write to cartridge {:04X} -> {:02X}", address, data);
             self.cartridge.as_ref().unwrap().borrow_mut().
                 write_to_prg_rom(address, data);
         }
@@ -84,7 +97,11 @@ impl Bus {
         self.controller_a.as_ref().borrow_mut().set_latch(false);
     }
 
-    pub fn connect_ppu(&mut self, ppu: Rc<RefCell<Ppu>>) {
-        self.ppu = Some(ppu);
+    pub fn dma_enable(&self) -> bool {
+        self.dma_enable
+    }
+
+    pub fn disable_dma(&mut self) {
+        self.dma_enable = false;
     }
 }

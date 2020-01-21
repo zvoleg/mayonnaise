@@ -66,8 +66,8 @@ pub struct Emu6502 {
     additional_cycles: u8,
 
     bus: Rc<RefCell<Bus>>,
-    clock_compleate: bool,
-    debug: bool,
+    pub clock_complete: bool,
+    pub debug: bool,
 }
 
 
@@ -92,7 +92,7 @@ impl Emu6502 {
             additional_cycles: 0,
 
             bus: bus.clone(),
-            clock_compleate: false,
+            clock_complete: false,
             debug: false
         }
     }
@@ -138,28 +138,12 @@ impl Emu6502 {
             (op.instruction)(self);
             self.cycle_counter = op.cycle_amount;
         } else {
-            self.clock_compleate = false;
+            self.clock_complete = false;
         }
         self.cycle_counter -= 1;
         if self.cycle_counter == 0 {
-            self.clock_compleate = true;
+            self.clock_complete = true;
         }
-    }
-
-    pub fn reset_complete_status(&mut self) {
-        self.clock_compleate = false;
-    }
-
-    pub fn clock_is_complete(&self) -> bool {
-        self.clock_compleate
-    }
-
-    pub fn get_debug(&self) -> bool {
-        self.debug
-    }
-
-    pub fn set_debug(&mut self, debug: bool) {
-        self.debug = debug;
     }
 
     pub fn irq(&mut self) {

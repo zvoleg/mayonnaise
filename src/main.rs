@@ -25,10 +25,9 @@ struct Device {
 impl Device {
     fn new () -> Device {
         let controller_a = Rc::new(RefCell::new(Controller::new()));
-        let bus = Rc::new(RefCell::new(Bus::new(controller_a.clone())));
-        let ppu = Rc::new(RefCell::new(Ppu::new(bus.clone())));
+        let ppu = Rc::new(RefCell::new(Ppu::new()));
+        let bus = Rc::new(RefCell::new(Bus::new(controller_a.clone(), ppu.clone())));
         let cpu = Emu6502::new(bus.clone());
-        bus.borrow_mut().connect_ppu(ppu.clone());
         Device {
             cpu,
             ppu,
@@ -73,8 +72,12 @@ impl Device {
 
     fn clock(&mut self, screen: &mut Screen) {
         let color = self.ppu.borrow_mut().clock();
-        if self.clock_counter % 3 == 0 && !self.ppu.borrow().reading_oam_data() {
-            self.cpu.clock();
+        if self.clock_counter % 3 == 0 {
+            if self.bus.borrow().dma_enable() {
+                self.bus.borrow_mut().disable_dma();
+            } else {
+                self.cpu.clock();
+            }
         }
         if self.ppu.borrow().nmi_require() {
             self.cpu.nmi();
@@ -87,20 +90,23 @@ impl Device {
             None => ()
         }
 
-        // let main_color_addr = self.ppu.borrow().read_ppu(0x3F00);
-        // let main_color = self.ppu.borrow().pallette_colors[main_color_addr as usize];
-        // screen.set_point_at_main_color_area(main_color);
+        if self.ppu.borrow().update_pallettes {
+            let main_color_addr = self.ppu.borrow().read_ppu(0x3F00);
+            let main_color = self.ppu.borrow().pallette_colors[main_color_addr as usize];
+            screen.set_point_at_main_color_area(main_color);
 
-        // (0..16).for_each(|x| {
-        //     let color_addr = self.ppu.borrow().read_ppu(0x3F00 + x +1);
-        //     let color = self.ppu.borrow().pallette_colors[color_addr as usize];
-        //     screen.set_point_at_background_color_area((x / 4) as usize, color);
-        // });
-        // (16..32).for_each(|x| {
-        //     let color_addr = self.ppu.borrow().read_ppu(0x3F00 + x + 1);
-        //     let color = self.ppu.borrow().pallette_colors[color_addr as usize];
-        //     screen.set_point_at_sprite_color_area(((x - 16) / 4) as usize, color);
-        // });
+            (0..16).for_each(|x| {
+                let color_addr = self.ppu.borrow().read_ppu(0x3F00 + x +1);
+                let color = self.ppu.borrow().pallette_colors[color_addr as usize];
+                screen.set_point_at_background_color_area((x / 4) as usize, color);
+            });
+            (16..32).for_each(|x| {
+                let color_addr = self.ppu.borrow().read_ppu(0x3F00 + x + 1);
+                let color = self.ppu.borrow().pallette_colors[color_addr as usize];
+                screen.set_point_at_sprite_color_area(((x - 16) / 4) as usize, color);
+            });
+            self.ppu.borrow_mut().update_pallettes = false;
+        }
     }
 }
 
@@ -118,7 +124,7 @@ fn main() {
     let  (mut recource_holder, canvas) = RecourceHolder::init(pixel_size);
     let mut screen = Screen::new(&mut recource_holder, canvas, pixel_size);
 
-    let cart = Cartridge::new("dk.nes");
+    let cart = Cartridge::new("smb.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
@@ -131,7 +137,6 @@ fn main() {
 
     screen.update();
 
-    let mut frame_counter = 0;
     let mut clock_type = ClockType::Undefined;
     let mut event_pump = screen.get_events();
     'lock: loop {
@@ -161,12 +166,10 @@ fn main() {
                     device.cpu.reset();
                 },
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-                    let debug = device.cpu.get_debug();
-                    device.cpu.set_debug(!debug);
+                    device.cpu.debug = !device.cpu.debug;
                 },
                 Event::KeyDown { keycode: Some(Keycode::E), .. } => {
-                    let debug = device.ppu.borrow().get_debug();
-                    device.ppu.borrow_mut().set_debug(!debug);
+                    device.ppu.borrow_mut().debug = !device.ppu.borrow().debug;
                 },
                 Event::KeyDown { keycode: Some(Keycode::V), .. } => {
                     let mut input = String::new();
@@ -223,13 +226,13 @@ fn main() {
 
         match clock_type {
             ClockType::Manual => {
-                while !device.cpu.clock_is_complete() {
+                while !device.cpu.clock_complete {
                     device.clock(&mut screen);
                 }
                 clock_type = ClockType::Undefined;
             },
             ClockType::Auto => {
-                while !device.ppu.borrow().frame_complete() {
+                while !device.ppu.borrow().frame_complete {
                     device.clock(&mut screen);
                     if device.controller_a.borrow().input_access() {
                         break;
@@ -237,7 +240,7 @@ fn main() {
                 }
             },
             ClockType::Frame => {
-                while !device.ppu.borrow().frame_complete() {
+                while !device.ppu.borrow().frame_complete {
                     device.clock(&mut screen);
                 }
                 clock_type = ClockType::Undefined;
@@ -251,12 +254,10 @@ fn main() {
             },
             ClockType::Undefined => (),
         }
-        if device.ppu.borrow().frame_complete() || device.cpu.clock_is_complete() {
+        if device.ppu.borrow().frame_complete || device.cpu.clock_complete {
             screen.update();
-            // println!("frame: {}", frame_counter);
-            frame_counter += 1;
-            device.ppu.borrow_mut().reset_frame_complete_status();
-            device.cpu.reset_complete_status();
+            device.ppu.borrow_mut().frame_complete = false;
+            device.cpu.clock_complete = false;
         }
     }
 }
