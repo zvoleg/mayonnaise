@@ -12,8 +12,9 @@ pub struct Bus {
     cartridge: Option<Rc<RefCell<Cartridge>>>,
 
     dma_enable: bool,
+    dma_wait_clock: bool,
+    oam_page: u8,
     oam_addr: u8,
-    oam_step: u8,
     oam_data: u8,
 }
 
@@ -26,8 +27,9 @@ impl Bus {
             cartridge: None,
 
             dma_enable: false,
+            dma_wait_clock: true,
+            oam_page: 0,
             oam_addr: 0,
-            oam_step: 0,
             oam_data: 0,
         }
     }
@@ -81,7 +83,7 @@ impl Bus {
                 cpu_write(address & 0x0007, data);
         } else if address == 0x4014 {
             self.dma_enable = true;
-            self.oam_addr = 0;
+            self.oam_page = 0;
         } else if address == 0x4016 {
             self.controller_a.as_ref().borrow_mut().set_latch((data & 0x01) != 0);
         } else if address >= 0x4020 {
@@ -103,5 +105,27 @@ impl Bus {
 
     pub fn disable_dma(&mut self) {
         self.dma_enable = false;
+    }
+
+    pub fn dma_wait_clock(&self) -> bool {
+        self.dma_wait_clock
+    }
+
+    pub fn set_dma_wait_clock(&mut self, wait: bool) {
+        self.dma_wait_clock = wait;
+    }
+
+    pub fn read_dma_byte(&mut self) {
+        let address = ((self.oam_page as u16) << 8) | self.oam_addr as u16;
+        self.oam_data = self.read_cpu_ram(address);
+    }
+
+    pub fn write_dma_byte(&mut self) {
+        self.ppu.borrow_mut().write_oam_byte(self.oam_addr, self.oam_data);
+        self.oam_addr = self.oam_addr.overflowing_add(1).0;
+        if self.oam_addr == 0x00 {
+            self.dma_enable = false;
+            self.dma_wait_clock = true;
+        }
     }
 }

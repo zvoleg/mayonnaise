@@ -74,7 +74,17 @@ impl Device {
         let color = self.ppu.borrow_mut().clock();
         if self.clock_counter % 3 == 0 {
             if self.bus.borrow().dma_enable() {
-                self.bus.borrow_mut().disable_dma();
+                if self.bus.borrow().dma_wait_clock() {
+                    if self.clock_counter % 2 == 1 {
+                        self.bus.borrow_mut().set_dma_wait_clock(false);
+                    }
+                } else {
+                    if self.clock_counter % 2 == 0 {
+                        self.bus.borrow_mut().read_dma_byte();
+                    } else {
+                        self.bus.borrow_mut().write_dma_byte();
+                    }
+                }
             } else {
                 self.cpu.clock();
             }
@@ -137,6 +147,7 @@ fn main() {
 
     screen.update();
 
+    let mut frame_counter = 0;
     let mut clock_type = ClockType::Undefined;
     let mut event_pump = screen.get_events();
     'lock: loop {
@@ -169,7 +180,8 @@ fn main() {
                     device.cpu.debug = !device.cpu.debug;
                 },
                 Event::KeyDown { keycode: Some(Keycode::E), .. } => {
-                    device.ppu.borrow_mut().debug = !device.ppu.borrow().debug;
+                    let debug = device.ppu.borrow().debug;
+                    device.ppu.borrow_mut().debug = !debug;
                 },
                 Event::KeyDown { keycode: Some(Keycode::V), .. } => {
                     let mut input = String::new();
@@ -255,6 +267,8 @@ fn main() {
             ClockType::Undefined => (),
         }
         if device.ppu.borrow().frame_complete || device.cpu.clock_complete {
+            // println!("frame: {}", frame_counter);
+            frame_counter += 1;
             screen.update();
             device.ppu.borrow_mut().frame_complete = false;
             device.cpu.clock_complete = false;

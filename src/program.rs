@@ -18,6 +18,7 @@ impl Cartridge {
 
         let size_prg = memory[4] as usize;
         let size_chr = memory[5] as usize;
+        println!("size_prg: {} | size_chr: {}", size_prg, size_chr);
         let mirroring = memory[6] & 0x01;
         let low = (memory[6] & 0xF0) >> 4;
         let high = memory[7] & 0xF0;
@@ -86,11 +87,16 @@ struct Mapper000 {
 
 impl Mapper for Mapper000 {
     fn prg_addr(&self, address: u16) -> usize {
-        let mut idx = address & 0x3FFF;
-        if self.size_prg == 2 && address >= 0xC000 {
-            idx += 16384;
+        if address >= 0x8000 {
+            let idx = match self.size_prg {
+            1 => address & 0x3FFF,
+            2 => address & 0x7FFF,
+            _ => 0,
+            };
+            idx as usize
+        } else {
+            panic!("mapper_000: prg_address out of range (address: {:04X})", address);
         }
-        idx as usize
     }
 
     fn chr_addr(&self, address: u16) -> usize {

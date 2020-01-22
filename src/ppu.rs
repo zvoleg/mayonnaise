@@ -189,6 +189,25 @@ impl AddresRegister {
     }
 }
 
+#[derive(Clone, Copy)]
+struct Oam {
+    y_position: u8,
+    sprite_id:  u8,
+    attributes: u8,
+    x_position: u8,
+}
+
+impl Oam {
+    fn new () -> Oam {
+        Oam {
+            y_position: 0,
+            sprite_id:  0,
+            attributes: 0,
+            x_position: 0,
+        }
+    }
+}
+
 pub struct Ppu {
     pub pallette_colors: [u32; 0x40],
     patterns: [[u8; 0x4000]; 2], // not necessary for emulation
@@ -212,7 +231,7 @@ pub struct Ppu {
     //    4, 3, 2 - unused
     //    1, 0 - higher bits of color
     // 4. x coordinate of sprite (top-left corner)
-    oam: [u8; 0x0100],
+    oam: [Oam; 64],
 
     cartridge: Option<Rc<RefCell<Cartridge>>>,
     mirroring: Mirroring,
@@ -266,7 +285,7 @@ impl<'a> Ppu {
             patterns:   [[0; 0x4000]; 2],
             name_table: [0; 0x0800],
             pallette:   [0; 0x0020],
-            oam:        [0; 0x0100],
+            oam:        [Oam::new(); 64],
 
             cartridge: None,
             mirroring: Mirroring::UNDEFINED,
@@ -446,10 +465,8 @@ impl<'a> Ppu {
                 }
             },
             // 0x0002 => (),
-            0x0003 => {
-                self.oam_address_reg = data;
-            },
-            0x0004 => (),
+            0x0003 => self.oam_address_reg = data,
+            0x0004 => self.write_oam_byte(self.oam_address_reg, data),
             0x0005 => {
                 if !self.latch {
                     self.tmp_addr.set_coarse_x(data >> 3);
@@ -472,12 +489,6 @@ impl<'a> Ppu {
                     self.tmp_addr.set_low_address(data);
                     self.cur_addr = self.tmp_addr;
                     self.latch = !self.latch;
-                    if self.debug {
-                        println!("ppu: update cur_addr register (address): {:04X}", self.tmp_addr.data);
-                    }
-                }
-                if self.debug {
-                    println!("ppu: update tmp_addr register (address): {:04X}", self.tmp_addr.data);
                 }
                 if self.debug{
                     println!("ppu: (scroll) update tmp addr register: {:02X} ({:08b})", self.tmp_addr.data, self.tmp_addr.data);
@@ -591,6 +602,13 @@ impl<'a> Ppu {
         let mut data = 0;
         self.cartridge.as_ref().unwrap().borrow().read_chr_rom(address, &mut data);
         data
+    }
+
+    pub fn write_oam_byte(&mut self, address: u8, data: u8) {
+        unsafe {
+            let first = &mut self.oam[0] as *mut _ as *mut u8;
+            *first.offset(address as isize) = data;
+        }
     }
 
     pub fn get_pattern_table(&self, table: u8) -> [u8; 0x4000] {
