@@ -370,9 +370,9 @@ impl Emu6502 {
 
     fn ADC(&mut self) { // add with carry
         self.cycle_counter += self.additional_cycles;
-        let add_value = self.fetch().overflowing_add(self.get_flag(Flag::C)).0;
+        let (add_value, overflow_carry) = self.fetch().overflowing_add(self.get_flag(Flag::C));
         let (result, overflow) = self.acc.overflowing_add(add_value);
-        self.set_flag(Flag::C, overflow);
+        self.set_flag(Flag::C, overflow || overflow_carry);
         self.set_flag(Flag::V, (self.acc & 0x80 == self.fetched_data & 0x80) && (self.acc & 0x80 != result & 0x80));
         self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0x0000);
@@ -736,6 +736,7 @@ impl Emu6502 {
     fn RTI(&mut self) { // return from interrupt
         self.status = self.pop_from_stack();
         self.set_flag(Flag::B, false);
+        self.set_flag(Flag::U, true);
         let low = self.pop_from_stack();
         let high = self.pop_from_stack();
         self.prog_counter = ((high as u16) << 8) | low as u16;

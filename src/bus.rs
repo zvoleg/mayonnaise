@@ -13,7 +13,7 @@ pub struct Bus {
 
     dma_enable: bool,
     dma_wait_clock: bool,
-    oam_page: u8,
+    oam_page: u16,
     oam_addr: u8,
     oam_data: u8,
 }
@@ -83,7 +83,8 @@ impl Bus {
                 cpu_write(address & 0x0007, data);
         } else if address == 0x4014 {
             self.dma_enable = true;
-            self.oam_page = 0;
+            self.dma_wait_clock = true;
+            self.oam_page = (data as u16) << 8;
         } else if address == 0x4016 {
             self.controller_a.as_ref().borrow_mut().set_latch((data & 0x01) != 0);
         } else if address >= 0x4020 {
@@ -116,7 +117,7 @@ impl Bus {
     }
 
     pub fn read_dma_byte(&mut self) {
-        let address = ((self.oam_page as u16) << 8) | self.oam_addr as u16;
+        let address = self.oam_page | self.oam_addr as u16;
         self.oam_data = self.read_cpu_ram(address);
     }
 
@@ -125,7 +126,6 @@ impl Bus {
         self.oam_addr = self.oam_addr.overflowing_add(1).0;
         if self.oam_addr == 0x00 {
             self.dma_enable = false;
-            self.dma_wait_clock = true;
         }
     }
 }

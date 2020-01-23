@@ -416,7 +416,7 @@ impl<'a> Ppu {
                 self.latch = false;
             },
             // 0x0003 => (),
-            // 0x0004 => (),
+            0x0004 => data = self.read_oam_byte(self.oam_address_reg),
             // 0x0005 => (),
             // 0x0006 => (),
             0x0007 => {
@@ -608,6 +608,13 @@ impl<'a> Ppu {
         unsafe {
             let first = &mut self.oam[0] as *mut _ as *mut u8;
             *first.offset(address as isize) = data;
+        }
+    }
+
+    pub fn read_oam_byte(&self, address: u8) -> u8 {
+        unsafe {
+            let first = &self.oam[0] as *const _ as *const u8;
+            *first.offset(address as isize)
         }
     }
 
