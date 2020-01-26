@@ -3,7 +3,6 @@ extern crate rand;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::program::Cartridge;
-use crate::bus::Bus;
 
 enum Mirroring {
     HORISONTAL,
@@ -35,9 +34,23 @@ impl Control {
         }
     }
 
+    fn sprite_size(&self) -> u8 {
+        match self.data & 0x20 != 0 {
+            true  => 16,
+            false => 8
+        }
+    }
+
     fn background_table_address(&self) -> u16 {
         match self.data & 0x10 != 0 {
-            true => 0x1000,
+            true  => 0x1000,
+            false => 0x0000
+        }
+    }
+
+    fn sprite_table_address(&self) -> u16 {
+        match (self.data & 0x08 != 0) && self.sprite_size() != 16 {
+            true  => 0x1000,
             false => 0x0000
         }
     }
@@ -58,8 +71,26 @@ impl Status {
 
     fn set_vblank(&mut self, set: bool) {
         match set {
-            true => self.data |= 0x80,
+            true  => self.data |= 0x80,
             false => self.data &= !0x80
+        }
+    }
+
+    fn set_sprite_overlow(&mut self, set: bool) {
+        match set {
+            true  => self.data |= 0x20,
+            false => self.data &= !0x20
+        }
+    }
+
+    fn hit_zero_sprite(&self) -> bool {
+        self.data & 0x40 != 0
+    }
+
+    fn set_hit_zero_sprite(&mut self, set: bool) {
+        match set {
+            true  => self.data |= 0x40,
+            false => self.data &= !0x40
         }
     }
 }
@@ -75,6 +106,10 @@ impl Mask {
 
     fn background_enable(&self) -> bool {
         self.data & 0x08 != 0
+    }
+
+    fn sprites_enable(&self) -> bool {
+        self.data & 0x10 != 0
     }
 
     fn grayscale_mode(&self) -> bool {
@@ -192,19 +227,27 @@ impl AddresRegister {
 #[derive(Clone, Copy)]
 struct Oam {
     y_position: u8,
-    sprite_id:  u8,
+    id:  u8,
     attributes: u8,
-    x_position: u8,
+    x_position: i8,
 }
 
 impl Oam {
     fn new () -> Oam {
         Oam {
             y_position: 0,
-            sprite_id:  0,
+            id:  0,
             attributes: 0,
             x_position: 0,
         }
+    }
+
+    fn get_pallette_id(&self) -> u8 {
+        self.attributes & 0x03
+    }
+
+    fn horizontal_flip(&self) -> bool {
+        self.attributes & 0x40 != 0
     }
 }
 
@@ -231,17 +274,20 @@ pub struct Ppu {
     //    4, 3, 2 - unused
     //    1, 0 - higher bits of color
     // 4. x coordinate of sprite (top-left corner)
-    oam: [Oam; 64],
+    oam_memory: [Oam; 64],
+    oam_tmp:    [Oam; 8],
+    oam_buffer: [Oam; 8],
 
     cartridge: Option<Rc<RefCell<Cartridge>>>,
     mirroring: Mirroring,
 
-    pub skanline: u16,
-    pub cycle:    u16,
+    skanline: u16,
+    cycle:    u16,
 
     pub frame_complete: bool,
-    vblank:         bool,
-    nmi_require:    bool,
+    vblank:             bool,
+    nmi_require:        bool,
+    in_visible_range:   bool,
     // Registers
     control:     Control,  // 0x2000
     mask:        Mask,     // 0x2001
@@ -268,6 +314,9 @@ pub struct Ppu {
     low_attribute_shift_register:  u16,
     high_attribute_shift_register: u16,
 
+    oam_counter: usize,
+    oam_tmp_counter: usize,
+
     pub update_pallettes: bool,
     pub debug: bool,
 }
@@ -285,7 +334,10 @@ impl<'a> Ppu {
             patterns:   [[0; 0x4000]; 2],
             name_table: [0; 0x0800],
             pallette:   [0; 0x0020],
-            oam:        [Oam::new(); 64],
+
+            oam_memory: [Oam::new(); 64],
+            oam_tmp:    [Oam::new(); 8],
+            oam_buffer: [Oam::new(); 8],
 
             cartridge: None,
             mirroring: Mirroring::UNDEFINED,
@@ -296,6 +348,7 @@ impl<'a> Ppu {
             frame_complete:    false,
             vblank:            false,
             nmi_require:       false,
+            in_visible_range:  false,
 
             control:           Control::new(0),
             mask:              Mask::new(0),
@@ -317,6 +370,9 @@ impl<'a> Ppu {
             high_pattern_shift_register:   0,
             low_attribute_shift_register:  0,
             high_attribute_shift_register: 0,
+
+            oam_counter: 0,
+            oam_tmp_counter: 0,
 
             update_pallettes: false,
             debug: false,
@@ -425,7 +481,6 @@ impl<'a> Ppu {
                 if self.cur_addr.data >= 0x3F00 {
                     data = self.data_buffer;
                 }
-                println!("cpu try read from addr: {:04X} ppu_data: {:02X}", self.cur_addr.data, data);
                 let increment = self.control.get_increment();
                 self.cur_addr.add_increment(increment);
             },
@@ -466,7 +521,10 @@ impl<'a> Ppu {
             },
             // 0x0002 => (),
             0x0003 => self.oam_address_reg = data,
-            0x0004 => self.write_oam_byte(self.oam_address_reg, data),
+            0x0004 => {
+               self.write_oam_byte(self.oam_address_reg, data);
+               self.oam_address_reg = self.oam_address_reg.overflowing_add(1).0;
+            },
             0x0005 => {
                 if !self.latch {
                     self.tmp_addr.set_coarse_x(data >> 3);
@@ -606,14 +664,14 @@ impl<'a> Ppu {
 
     pub fn write_oam_byte(&mut self, address: u8, data: u8) {
         unsafe {
-            let first = &mut self.oam[0] as *mut _ as *mut u8;
+            let first = &mut self.oam_memory[0] as *mut _ as *mut u8;
             *first.offset(address as isize) = data;
         }
     }
 
     pub fn read_oam_byte(&self, address: u8) -> u8 {
         unsafe {
-            let first = &self.oam[0] as *const _ as *const u8;
+            let first = &self.oam_memory[0] as *const _ as *const u8;
             *first.offset(address as isize)
         }
     }
@@ -706,33 +764,16 @@ impl<'a> Ppu {
                 self.tmp_addr.data
             );
         }
-        if self.skanline == 241 && self.cycle == 1 {
-            self.status.set_vblank(true);
-            self.vblank = true;
-            if self.control.nmi_flag() {
-                self.nmi_require = true;
-            }
-            if self.debug {
-            println!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
-                self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
-            }
-        }
-        if self.skanline == 261 && self.cycle == 1 {
-            self.status.set_vblank(false);
-            self.vblank = false;
-            if self.debug {
-                println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
-                    self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
-            }
-        }
+
         let mut color = None;
 
         if self.cycle >= 1 && self.cycle <= 256 && self.skanline <= 239 {
             color = Some(self.pallette_colors[self.read_ppu(0x3F00) as usize]);
         }
 
+        // background pixel
         if self.mask.background_enable() {
-            if self.cycle >= 1 && self.cycle <= 256 && self.skanline <= 239 {
+            if self.in_visible_range {
                 let color_address = self.get_collor_address();
                 let pallette_address = self.read_ppu(color_address);
                 color = Some(self.pallette_colors[pallette_address as usize]);
@@ -774,13 +815,105 @@ impl<'a> Ppu {
             }
         }
 
+        // sprite pixel
+        if self.mask.sprites_enable() && self.in_visible_range {
+            // sprite evaluation
+            if self.cycle <= 64 { // clear tmp oam memory
+                if self.cycle % 2 == 0 {
+                    unsafe {
+                        let p = &mut self.oam_tmp[((self.cycle - 1) / 8) as usize] as *mut _ as *mut u8;
+                        *p.offset(((self.cycle / 2) % 4) as isize) = 0xFF;
+                    }
+                }
+            }
+            if self.cycle > 64 && self.cycle <= 256 && self.oam_counter < 64 && self.oam_tmp_counter <= 8 {
+                let oam_candidate = self.oam_memory[self.oam_counter];
+                self.oam_counter += 1;
+                let offset_by_y = (self.skanline as i16 + 1) - (oam_candidate.y_position as i16);
+                if offset_by_y >= 0 && offset_by_y < self.control.sprite_size() as i16 {
+                    if self.oam_tmp_counter < 8 {
+                        self.oam_tmp[self.oam_tmp_counter] = oam_candidate;
+                        self.oam_tmp_counter += 1;
+                    } else {
+                        self.status.set_sprite_overlow(true);
+                    }
+                }
+            }
+            // sprite rendering
+            for i in 0..8 {
+                let sprite = &mut self.oam_buffer[i];
+                let x_position = sprite.x_position;
+                sprite.x_position -= 1;
+                if x_position > -8 && x_position <= 0 {
+                    if !self.status.hit_zero_sprite() {
+                        self.status.set_hit_zero_sprite(true);
+                    }
+                    let offset_by_y = (self.skanline as u16) - (sprite.y_position as u16);
+                    if (offset_by_y as u8) < self.control.sprite_size() {
+                        let pattern_id = sprite.id as u16;
+                        let pattern_low_byte_address = self.control.sprite_table_address() + pattern_id * 16 + offset_by_y;
+                        let pattern_high_byte_address = self.control.sprite_table_address() + pattern_id * 16 + 8 + offset_by_y;
+
+                        let mut pattern_low_byte = 0;
+                        let mut pattern_high_byte = 0;
+
+                        self.cartridge.as_ref().unwrap().borrow().read_chr_rom(pattern_low_byte_address, &mut pattern_low_byte);
+                        self.cartridge.as_ref().unwrap().borrow().read_chr_rom(pattern_high_byte_address, &mut pattern_high_byte);
+
+                        let horizontal_flip = sprite.horizontal_flip();
+                        let x_offset = match horizontal_flip {
+                            true  => -x_position,
+                            false => 7 - -x_position
+                        };
+                        let pixel_low_bit = (pattern_low_byte >> x_offset) & 0x01;
+                        let pixel_high_bit = (pattern_high_byte >> x_offset) & 0x01;
+
+                        let pallette_id = sprite.get_pallette_id();
+
+                        let color_address = 0x3F10 + (pallette_id << 2 | pixel_high_bit << 1 | pixel_low_bit) as u16;
+                        let color_id = self.read_ppu(color_address) as usize;
+                        color = Some(self.pallette_colors[color_id]);
+                    }
+                }
+            }
+        }
+
+        if self.cycle == 257 && self.skanline <= 239 {
+            std::mem::swap(&mut self.oam_tmp, &mut self.oam_buffer);
+        }
+
         self.cycle += 1;
         if self.cycle > 340 {
             self.cycle = 0;
             self.skanline += 1;
+            self.oam_counter = 0;
+            self.oam_tmp_counter = 0;
             if self.skanline > 261 {
                 self.skanline = 0;
                 self.frame_complete = true;
+            }
+        }
+
+        self.in_visible_range = self.cycle >= 1 && self.cycle <= 256 && self.skanline <= 239;
+        if self.skanline == 241 && self.cycle == 1 {
+            self.status.set_vblank(true);
+            self.vblank = true;
+            if self.control.nmi_flag() {
+                self.nmi_require = true;
+            }
+            if self.debug {
+            println!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
+                self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
+            }
+        }
+        if self.skanline == 261 && self.cycle == 1 {
+            self.status.set_vblank(false);
+            self.status.set_sprite_overlow(false);
+            self.status.set_hit_zero_sprite(false);
+            self.vblank = false;
+            if self.debug {
+                println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
+                    self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
             }
         }
         color

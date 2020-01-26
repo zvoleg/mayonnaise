@@ -147,7 +147,6 @@ fn main() {
 
     screen.update();
 
-    let mut frame_counter = 0;
     let mut clock_type = ClockType::Undefined;
     let mut event_pump = screen.get_events();
     'lock: loop {
@@ -267,8 +266,6 @@ fn main() {
             ClockType::Undefined => (),
         }
         if device.ppu.borrow().frame_complete || device.cpu.clock_complete {
-            // println!("frame: {}", frame_counter);
-            frame_counter += 1;
             screen.update();
             device.ppu.borrow_mut().frame_complete = false;
             device.cpu.clock_complete = false;
