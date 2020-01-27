@@ -3,9 +3,10 @@ extern crate sdl2;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::{stdin, stdout, Write};
+use std::collections::HashSet;
 
 use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::{Keycode, Scancode};
 
 use emu::emu6502::Emu6502;
 use emu::ppu::Ppu;
@@ -223,14 +224,21 @@ fn main() {
                 }
                 Event::KeyDown { keycode: Some(Keycode::Num1), .. } => device.ppu.borrow().read_name_table(0),
                 Event::KeyDown { keycode: Some(Keycode::Num2), .. } => device.ppu.borrow().read_name_table(1),
-                Event::KeyDown { keycode: Some(Keycode::Up), .. } => device.controller_a.as_ref().borrow_mut().update_register(0x10),
-                Event::KeyDown { keycode: Some(Keycode::Down), .. } => device.controller_a.as_ref().borrow_mut().update_register(0x20),
-                Event::KeyDown { keycode: Some(Keycode::Left), .. } => device.controller_a.as_ref().borrow_mut().update_register(0x40),
-                Event::KeyDown { keycode: Some(Keycode::Right), .. } => device.controller_a.as_ref().borrow_mut().update_register(0x80),
-                Event::KeyDown { keycode: Some(Keycode::Z), .. } => device.controller_a.as_ref().borrow_mut().update_register(0x01),
-                Event::KeyDown { keycode: Some(Keycode::X), .. } => device.controller_a.as_ref().borrow_mut().update_register(0x02),
-                Event::KeyDown { keycode: Some(Keycode::LCtrl), .. } => device.controller_a.as_ref().borrow_mut().update_register(0x04),
-                Event::KeyDown { keycode: Some(Keycode::Space), .. } => device.controller_a.as_ref().borrow_mut().update_register(0x08),
+                _ => (),
+            }
+        }
+
+        let keys: HashSet<Scancode> = event_pump.keyboard_state().pressed_scancodes().collect();
+        for key in keys {
+            match key {
+                Scancode::Up => device.controller_a.as_ref().borrow_mut().update_register(0x10),
+                Scancode::Down => device.controller_a.as_ref().borrow_mut().update_register(0x20),
+                Scancode::Left => device.controller_a.as_ref().borrow_mut().update_register(0x40),
+                Scancode::Right => device.controller_a.as_ref().borrow_mut().update_register(0x80),
+                Scancode::Z => device.controller_a.as_ref().borrow_mut().update_register(0x01),
+                Scancode::X => device.controller_a.as_ref().borrow_mut().update_register(0x02),
+                Scancode::LCtrl => device.controller_a.as_ref().borrow_mut().update_register(0x04),
+                Scancode::Space => device.controller_a.as_ref().borrow_mut().update_register(0x08),
                 _ => ()
             }
         }

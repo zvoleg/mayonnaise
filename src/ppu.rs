@@ -272,7 +272,7 @@ pub struct Ppu {
     //    6 - horizontal mirroring of sprite (1 - mirror, 0 - normal)
     //    5 - priority of sprite (1 - over the background, 0 - under the background)
     //    4, 3, 2 - unused
-    //    1, 0 - higher bits of color
+    //    1, 0 - bits of color
     // 4. x coordinate of sprite (top-left corner)
     oam_memory: [Oam; 64],
     oam_tmp:    [Oam; 8],
@@ -830,7 +830,7 @@ impl<'a> Ppu {
                 let oam_candidate = self.oam_memory[self.oam_counter];
                 self.oam_counter += 1;
                 let offset_by_y = (self.skanline as i16 + 1) - (oam_candidate.y_position as i16);
-                if offset_by_y >= 0 && offset_by_y < self.control.sprite_size() as i16 {
+                if offset_by_y >= 0 && offset_by_y <= self.control.sprite_size() as i16 {
                     if self.oam_tmp_counter < 8 {
                         self.oam_tmp[self.oam_tmp_counter] = oam_candidate;
                         self.oam_tmp_counter += 1;
