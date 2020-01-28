@@ -229,7 +229,7 @@ struct Oam {
     y_position: u8,
     id:  u8,
     attributes: u8,
-    x_position: i8,
+    x_position: u8,
 }
 
 impl Oam {
@@ -248,6 +248,10 @@ impl Oam {
 
     fn horizontal_flip(&self) -> bool {
         self.attributes & 0x40 != 0
+    }
+
+    fn in_front_of_bg(&self) -> bool {
+        self.attributes & 0x20 == 0
     }
 }
 
@@ -309,10 +313,16 @@ pub struct Ppu {
     next_background_low_pattern:   u8,
     next_background_high_pattern:  u8,
 
-    low_pattern_shift_register:    u16,
-    high_pattern_shift_register:   u16,
-    low_attribute_shift_register:  u16,
-    high_attribute_shift_register: u16,
+    bg_low_shift_register:            u16,
+    bg_high_shift_register:           u16,
+    bg_low_attribute_shift_register:  u16,
+    bg_high_attribute_shift_register: u16,
+
+    sprite_low_shift_register:            u8,
+    sprite_high_shift_register:           u8,
+    sprite_priority_shift_register:       u8,
+    sprite_low_attribute_shift_register:  u8,
+    sprite_high_attribute_shift_register: u8,
 
     oam_counter: usize,
     oam_tmp_counter: usize,
@@ -366,10 +376,16 @@ impl<'a> Ppu {
             next_background_low_pattern:  0,
             next_background_high_pattern: 0,
 
-            low_pattern_shift_register:    0,
-            high_pattern_shift_register:   0,
-            low_attribute_shift_register:  0,
-            high_attribute_shift_register: 0,
+            bg_low_shift_register:            0,
+            bg_high_shift_register:           0,
+            bg_low_attribute_shift_register:  0,
+            bg_high_attribute_shift_register: 0,
+
+            sprite_low_shift_register:            0,
+            sprite_high_shift_register:           0,
+            sprite_priority_shift_register:       0,
+            sprite_low_attribute_shift_register:  0,
+            sprite_high_attribute_shift_register: 0,
 
             oam_counter: 0,
             oam_tmp_counter: 0,
@@ -380,35 +396,57 @@ impl<'a> Ppu {
     }
 
     fn shifting_registers(&mut self) {
-        self.low_pattern_shift_register <<= 8;
-        self.high_pattern_shift_register <<= 8;
-        self.low_attribute_shift_register <<= 8;
-        self.high_attribute_shift_register <<= 8;
+        self.bg_low_shift_register >>= 8;
+        self.bg_high_shift_register >>= 8;
+        self.bg_low_attribute_shift_register >>= 8;
+        self.bg_high_attribute_shift_register >>= 8;
     }
 
     fn set_next_data_to_shift_registers(&mut self) {
-        self.low_pattern_shift_register = (self.low_pattern_shift_register & 0xFF00) | self.next_background_low_pattern as u16;
-        self.high_pattern_shift_register = (self.high_pattern_shift_register & 0xFF00) | self.next_background_high_pattern as u16;
+        self.bg_low_shift_register = (self.bg_low_shift_register & 0x00FF) | (self.next_background_low_pattern as u16) << 8;
+        self.bg_high_shift_register = (self.bg_high_shift_register & 0x00FF) | (self.next_background_high_pattern as u16) << 8;
 
         let attribute_idx_for_tile = (self.cur_addr.get_coarse_y() & 0x02) | ((self.cur_addr.get_coarse_x() >> 1) & 0x01);
         let low_attribute_bit = (self.next_background_attribute >> (attribute_idx_for_tile * 2)) & 0x01;
-        self.low_attribute_shift_register = (self.low_attribute_shift_register & 0xFF00) | match low_attribute_bit {
-            1 => 0x00FF,
+        self.bg_low_attribute_shift_register = (self.bg_low_attribute_shift_register & 0x00FF) | match low_attribute_bit {
+            1 => 0xFF00,
             _ => 0x0000,
         };
         let high_attribute_bit = (self.next_background_attribute >> (attribute_idx_for_tile * 2) + 1) & 0x01;
-        self.high_attribute_shift_register = (self.high_attribute_shift_register & 0xFF00) | match high_attribute_bit {
-            1 => 0x00FF,
+        self.bg_high_attribute_shift_register = (self.bg_high_attribute_shift_register & 0x00FF) | match high_attribute_bit {
+            1 => 0xFF00,
             _ => 0x0000,
         };
     }
 
-    fn get_collor_address(&self) -> u16 {
-        let idx4 = (self.high_attribute_shift_register >> 8 + (7 - self.fine_x_scroll)) & 0x01;
-        let idx3 = (self.low_attribute_shift_register >> 8 + (7 - self.fine_x_scroll)) & 0x01;
-        let idx2 = (self.high_pattern_shift_register >> 8 + (7 - self.fine_x_scroll)) & 0x01;
-        let idx1 = (self.low_pattern_shift_register >> 8 + (7 - self.fine_x_scroll)) & 0x01;
-        0x3F00 + ((idx4 << 3) | (idx3  << 2) | (idx2 << 1) | idx1)
+    fn pop_bg_pixel(&mut self) -> u16 {
+        let idx4 = self.bg_high_attribute_shift_register & 0x01;
+        let idx3 = self.bg_low_attribute_shift_register & 0x01;
+        let idx2 = self.bg_high_shift_register & 0x01;
+        let idx1 = self.bg_low_shift_register & 0x01;
+        self.bg_high_attribute_shift_register >>= 1;
+        self.bg_low_attribute_shift_register >>= 1;
+        self.bg_high_shift_register >>= 1;
+        self.bg_low_shift_register >>= 1;
+        (idx4 << 3) | (idx3  << 2) | (idx2 << 1) | idx1
+    }
+
+    fn pop_sprite_pixel(&mut self) -> u16 {
+        let idx4 = (self.sprite_high_attribute_shift_register & 0x01) as u16;
+        let idx3 = (self.sprite_low_attribute_shift_register & 0x01) as u16;
+        let idx2 = (self.sprite_high_shift_register & 0x01) as u16;
+        let idx1 = (self.sprite_low_shift_register & 0x01) as u16;
+        self.sprite_high_attribute_shift_register >>= 1;
+        self.sprite_low_attribute_shift_register >>= 1;
+        self.sprite_high_shift_register >>= 1;
+        self.sprite_low_shift_register >>= 1;
+        (idx4 << 3) | (idx3  << 2) | (idx2 << 1) | idx1
+    }
+
+    fn pop_sprite_pixel_priority(&mut self) -> u8 {
+        let priority = self.sprite_priority_shift_register & 0x01;
+        self.sprite_priority_shift_register >>= 1;
+        priority
     }
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
@@ -439,10 +477,14 @@ impl<'a> Ppu {
             self.next_background_attribute = 0;
             self.next_background_low_pattern = 0;
             self.next_background_high_pattern = 0;
-            self.low_pattern_shift_register = 0;
-            self.high_pattern_shift_register = 0;
-            self.low_attribute_shift_register = 0;
-            self.high_attribute_shift_register = 0;
+            self.bg_low_shift_register = 0;
+            self.bg_high_shift_register = 0;
+            self.bg_low_attribute_shift_register = 0;
+            self.bg_high_attribute_shift_register = 0;
+            self.sprite_low_shift_register = 0;
+            self.sprite_high_shift_register = 0;
+            self.sprite_low_attribute_shift_register = 0;
+            self.sprite_high_attribute_shift_register = 0;
     }
 
     pub fn cpu_read_only(&self, address: u16) -> u8 {
@@ -719,6 +761,22 @@ impl<'a> Ppu {
         }
     }
 
+    fn load_pattern_bytes_for_sprite(&self, sprite: &Oam, y_offset: u16, low_byte: &mut u8, high_byte: &mut u8) {
+        let pattern_id = sprite.id as u16;
+        let pattern_low_byte_address = self.control.sprite_table_address() + pattern_id * 16 + y_offset;
+        let pattern_high_byte_address = self.control.sprite_table_address() + pattern_id * 16 + 8 + y_offset;
+
+        self.cartridge.as_ref().unwrap().borrow().read_chr_rom(pattern_low_byte_address, low_byte);
+        self.cartridge.as_ref().unwrap().borrow().read_chr_rom(pattern_high_byte_address, high_byte);
+
+        // pixel bit reading by 0x01 mask, but first bit to read placed at 0x80 position,
+        // that means we should reverse bits for normal rendering of sprite
+        if !sprite.horizontal_flip() {
+            *low_byte = low_byte.reverse_bits();
+            *high_byte = high_byte.reverse_bits();
+        }
+    }
+
     fn fetching_data_trough_cycles(&mut self) {
         match self.cycle % 8 {
             1 => {
@@ -729,14 +787,14 @@ impl<'a> Ppu {
             },
             5 => {
                 let low_byte_address = self.control.background_table_address() + (self.next_background_tile_id as u16 * 16) + self.cur_addr.get_fine_y() as u16;
-                self.next_background_low_pattern = self.read_ppu(low_byte_address);
+                self.next_background_low_pattern = self.read_ppu(low_byte_address).reverse_bits();
             }
             7 => {
                 let high_byte_address = self.control.background_table_address() + (self.next_background_tile_id as u16 * 16) + 8 + self.cur_addr.get_fine_y() as u16;
-                self.next_background_high_pattern = self.read_ppu(high_byte_address);
+                self.next_background_high_pattern = self.read_ppu(high_byte_address).reverse_bits();
             },
             0 => {
-                self.shifting_registers();
+                // self.shifting_registers();
                 self.set_next_data_to_shift_registers();
                 self.cur_addr.increment_coarse_x();
             }
@@ -771,12 +829,13 @@ impl<'a> Ppu {
             color = Some(self.pallette_colors[self.read_ppu(0x3F00) as usize]);
         }
 
+        let mut bg_pixel = 0;
+        let mut sprite_pixel = 0;
+        let mut sprite_pixel_priority = 0;
         // background pixel
         if self.mask.background_enable() {
             if self.in_visible_range {
-                let color_address = self.get_collor_address();
-                let pallette_address = self.read_ppu(color_address);
-                color = Some(self.pallette_colors[pallette_address as usize]);
+                bg_pixel = self.pop_bg_pixel();
                 self.fetching_data_trough_cycles();
             }
 
@@ -841,41 +900,94 @@ impl<'a> Ppu {
             }
             // sprite rendering
             for i in 0..8 {
-                let sprite = &mut self.oam_buffer[i];
-                let x_position = sprite.x_position;
-                sprite.x_position -= 1;
-                if x_position > -8 && x_position <= 0 {
-                    if !self.status.hit_zero_sprite() {
-                        self.status.set_hit_zero_sprite(true);
-                    }
-                    let offset_by_y = (self.skanline as u16) - (sprite.y_position as u16);
-                    if (offset_by_y as u8) < self.control.sprite_size() {
-                        let pattern_id = sprite.id as u16;
-                        let pattern_low_byte_address = self.control.sprite_table_address() + pattern_id * 16 + offset_by_y;
-                        let pattern_high_byte_address = self.control.sprite_table_address() + pattern_id * 16 + 8 + offset_by_y;
-
+                let sprite = &self.oam_buffer[i];
+                if sprite.x_position == 0 {
+                    let offset_by_y = self.skanline.overflowing_sub(sprite.y_position as u16).0;
+                    if offset_by_y < self.control.sprite_size() as u16 {
+                        // update sprite pattern shift registers
                         let mut pattern_low_byte = 0;
                         let mut pattern_high_byte = 0;
+                        self.load_pattern_bytes_for_sprite(sprite, offset_by_y, &mut pattern_low_byte, &mut pattern_high_byte);
 
-                        self.cartridge.as_ref().unwrap().borrow().read_chr_rom(pattern_low_byte_address, &mut pattern_low_byte);
-                        self.cartridge.as_ref().unwrap().borrow().read_chr_rom(pattern_high_byte_address, &mut pattern_high_byte);
+                        let mut priority_positions_for_update: Vec<u8> = Vec::new();
+                        if self.sprite_low_shift_register == 0 && self.sprite_high_shift_register == 0 {
+                            self.sprite_low_shift_register = pattern_low_byte;
+                            self.sprite_high_shift_register = pattern_high_byte;
+                        } else {
+                            let mut bit_position = 0x80;
+                            while bit_position != 0 {
+                                if self.sprite_low_shift_register & bit_position == 0 &&
+                                    self.sprite_high_shift_register & bit_position == 0 {
+                                        self.sprite_low_shift_register |= pattern_low_byte & bit_position;
+                                        self.sprite_high_shift_register |= pattern_high_byte & bit_position;
+                                        priority_positions_for_update.push(bit_position);
+                                    }
+                                bit_position >>= 1;
+                            }
+                        }
 
-                        let horizontal_flip = sprite.horizontal_flip();
-                        let x_offset = match horizontal_flip {
-                            true  => -x_position,
-                            false => 7 - -x_position
-                        };
-                        let pixel_low_bit = (pattern_low_byte >> x_offset) & 0x01;
-                        let pixel_high_bit = (pattern_high_byte >> x_offset) & 0x01;
+                        // update sprite priority shift register
+                        for bit_position in priority_positions_for_update {
+                            self.sprite_priority_shift_register &= !bit_position;
+                            self.sprite_priority_shift_register |= match sprite.in_front_of_bg() {
+                                true  => 0,
+                                false => bit_position,
+                            };
+                        }
 
+                        // update sprite attribute shift registers
                         let pallette_id = sprite.get_pallette_id();
 
-                        let color_address = 0x3F10 + (pallette_id << 2 | pixel_high_bit << 1 | pixel_low_bit) as u16;
-                        let color_id = self.read_ppu(color_address) as usize;
-                        color = Some(self.pallette_colors[color_id]);
+                        if self.sprite_low_attribute_shift_register == 0 && self.sprite_high_attribute_shift_register == 0 {
+                            self.sprite_low_attribute_shift_register = match pallette_id & 0x01 != 0 {
+                                true  => 0xFF,
+                                false => 0x00
+                            };
+                            self.sprite_high_attribute_shift_register = match pallette_id & 0x02 != 0 {
+                                true  => 0xFF,
+                                false => 0x00
+                            };
+                        } else {
+                            let mut bit_position = 0x80;
+                            while bit_position != 0 {
+                                if self.sprite_low_attribute_shift_register & bit_position == 0 &&
+                                    self.sprite_high_attribute_shift_register & bit_position == 0 {
+                                        self.sprite_low_attribute_shift_register |= match pallette_id & 0x01 != 0 {
+                                            true  => bit_position,
+                                            false => 0,
+                                        };
+                                        self.sprite_high_attribute_shift_register |= match pallette_id & 0x02 != 0 {
+                                            true  => bit_position,
+                                            false => 0,
+                                        };
+                                    }
+                                bit_position >>= 1;
+                            }
+                        }
                     }
                 }
+                (&mut self.oam_buffer[i]).x_position = sprite.x_position.overflowing_sub(1).0;
             }
+            sprite_pixel = self.pop_sprite_pixel();
+            sprite_pixel_priority = self.pop_sprite_pixel_priority();
+        }
+
+        if self.in_visible_range {
+            let color_address;
+            if bg_pixel & 0x03 != 0 && sprite_pixel & 0x03 != 0 && !self.status.hit_zero_sprite() {
+                self.status.set_hit_zero_sprite(true);
+            }
+
+            if bg_pixel & 0x03 == 0 && sprite_pixel & 0x03 != 0 {
+                color_address = 0x3F10 + sprite_pixel;
+            } else if bg_pixel & 0x03 != 0 && sprite_pixel & 0x03 == 0 {
+                color_address = 0x3F00 + bg_pixel;
+            } else if sprite_pixel_priority == 0 {
+                color_address = 0x3F10 + sprite_pixel;
+            } else {
+                color_address = 0x3F00 + bg_pixel;
+            }
+            color = Some(self.pallette_colors[self.read_ppu(color_address) as usize]);
         }
 
         if self.cycle == 257 && self.skanline <= 239 {
@@ -910,6 +1022,11 @@ impl<'a> Ppu {
             self.status.set_vblank(false);
             self.status.set_sprite_overlow(false);
             self.status.set_hit_zero_sprite(false);
+            self.sprite_low_shift_register = 0;
+            self.sprite_high_shift_register = 0;
+            self.sprite_low_attribute_shift_register = 0;
+            self.sprite_high_attribute_shift_register = 0;
+            self.sprite_priority_shift_register = 0;
             self.vblank = false;
             if self.debug {
                 println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",

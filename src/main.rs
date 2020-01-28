@@ -135,7 +135,7 @@ fn main() {
     let  (mut recource_holder, canvas) = RecourceHolder::init(pixel_size);
     let mut screen = Screen::new(&mut recource_holder, canvas, pixel_size);
 
-    let cart = Cartridge::new("dk.nes");
+    let cart = Cartridge::new("smb.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     

@@ -4,8 +4,8 @@ use std::io::prelude::*;
 pub struct Cartridge {
     prg_rom: Vec<u8>,
     chr_rom: Vec<u8>,
-    size_prg: usize,
-    size_chr: usize,
+    _size_prg: usize,
+    _size_chr: usize,
     mirroring: u8,
     mapper: Box<dyn Mapper>,
 }
@@ -40,8 +40,8 @@ impl Cartridge {
         Cartridge {
             prg_rom,
             chr_rom,
-            size_prg,
-            size_chr,
+            _size_prg: size_prg,
+            _size_chr: size_chr,
             mirroring,
             mapper
         }
@@ -49,7 +49,7 @@ impl Cartridge {
 
     fn create_mapper(size_prg: usize, size_chr: usize, mapper_id: u8) -> Box<dyn Mapper> {
         let mapper = match mapper_id {
-            000 => Mapper000 { size_prg, size_chr },
+            000 => Mapper000 { size_prg, _size_chr: size_chr },
             _   => panic!("unknown mapper: {}", mapper_id),
         };
         Box::new(mapper)
@@ -82,7 +82,7 @@ trait Mapper {
 
 struct Mapper000 {
     size_prg: usize,
-    size_chr: usize
+    _size_chr: usize
 }
 
 impl Mapper for Mapper000 {
