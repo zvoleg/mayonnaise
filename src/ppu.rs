@@ -396,10 +396,10 @@ impl<'a> Ppu {
     }
 
     fn shifting_registers(&mut self) {
-        self.bg_low_shift_register >>= 8;
-        self.bg_high_shift_register >>= 8;
-        self.bg_low_attribute_shift_register >>= 8;
-        self.bg_high_attribute_shift_register >>= 8;
+        self.bg_low_shift_register >>= self.fine_x_scroll;
+        self.bg_high_shift_register >>= self.fine_x_scroll;
+        self.bg_low_attribute_shift_register >>= self.fine_x_scroll;
+        self.bg_high_attribute_shift_register >>= self.fine_x_scroll;
     }
 
     fn set_next_data_to_shift_registers(&mut self) {
@@ -763,6 +763,9 @@ impl<'a> Ppu {
 
     fn load_pattern_bytes_for_sprite(&self, sprite: &Oam, y_offset: u16, low_byte: &mut u8, high_byte: &mut u8) {
         let pattern_id = sprite.id as u16;
+
+        //TODO vertical flip
+
         let pattern_low_byte_address = self.control.sprite_table_address() + pattern_id * 16 + y_offset;
         let pattern_high_byte_address = self.control.sprite_table_address() + pattern_id * 16 + 8 + y_offset;
 
@@ -800,11 +803,6 @@ impl<'a> Ppu {
             }
             _ => (),
         }
-        if self.fine_x_scroll < 7 {
-            self.fine_x_scroll += 1;
-        } else {
-            self.fine_x_scroll = 0;
-        }
     }
 
     pub fn clock(&mut self) -> Option<u32> {
@@ -834,6 +832,9 @@ impl<'a> Ppu {
         let mut sprite_pixel_priority = 0;
         // background pixel
         if self.mask.background_enable() {
+            if self.in_visible_range && self.cycle == 1 {
+                self.shifting_registers();
+            }
             if self.in_visible_range {
                 bg_pixel = self.pop_bg_pixel();
                 self.fetching_data_trough_cycles();
