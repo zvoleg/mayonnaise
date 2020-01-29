@@ -115,6 +115,14 @@ impl Mask {
     fn grayscale_mode(&self) -> bool {
         self.data & 0x01 != 0
     }
+
+    fn bg_enable_left_column(&self) -> bool {
+        self.data & 0x02 != 0
+    }
+
+    fn sprite_enable_left_column(&self) -> bool {
+        self.data & 0x04 != 0
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -865,7 +873,9 @@ impl<'a> Ppu {
                 self.shifting_bg_registers();
             }
             if self.in_visible_range {
-                bg_pixel = self.pop_bg_pixel();
+                if self.mask.bg_enable_left_column() || self.cycle > 8 {
+                    bg_pixel = self.pop_bg_pixel();
+                }
                 self.fetching_data_trough_cycles();
             }
 
@@ -929,9 +939,11 @@ impl<'a> Ppu {
                 }
             }
             // sprite rendering
-            let sprite_pixel_with_priority = self.pop_sprite_pixel_with_priority();
-            sprite_pixel = sprite_pixel_with_priority & 0x0F;
-            sprite_pixel_priority = sprite_pixel_with_priority >> 4;
+            if self.mask.sprite_enable_left_column() || self.cycle > 8 {
+                let sprite_pixel_with_priority = self.pop_sprite_pixel_with_priority();
+                sprite_pixel = sprite_pixel_with_priority & 0x0F;
+                sprite_pixel_priority = sprite_pixel_with_priority >> 4;
+            }
         }
 
         if self.in_visible_range {

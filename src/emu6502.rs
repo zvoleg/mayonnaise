@@ -382,9 +382,9 @@ impl Emu6502 {
     fn SBC(&mut self) { // subtract with carry
         self.cycle_counter += self.additional_cycles;
         self.fetch();
-        let operand = (!self.fetched_data).overflowing_add(self.get_flag(Flag::C)).0;
-        let result = self.acc.overflowing_add(operand).0;
-        self.set_flag(Flag::C, result == 0 || result & 0x80 == 0);
+        let (operand, overflow1) = (!self.fetched_data).overflowing_add(self.get_flag(Flag::C));
+        let (result, overflow) = self.acc.overflowing_add(operand);
+        self.set_flag(Flag::C, overflow || overflow1);
         self.set_flag(Flag::V, (self.acc & 0x80 == operand & 0x80) && (self.acc & 0x80 != result & 0x80));
         self.set_flag(Flag::S, result & 0x80 != 0);
         self.set_flag(Flag::Z, result == 0);
