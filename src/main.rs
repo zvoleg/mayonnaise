@@ -135,7 +135,7 @@ fn main() {
     let  (mut recource_holder, canvas) = RecourceHolder::init(pixel_size);
     let mut screen = Screen::new(&mut recource_holder, canvas, pixel_size);
 
-    let cart = Cartridge::new("dk.nes");
+    let cart = Cartridge::new("p.nes");
     let mut device = Device::new();
     device.insert_cartridge(cart);
     
@@ -211,7 +211,7 @@ fn main() {
                         Err(_) => 0,
                     };
                     device.bus.borrow_mut().write_input_value(input_value);
-                }
+                },
                 Event::KeyDown { keycode: Some(Keycode::P), .. } => {
                     let mut input = String::new();
                     stdout().flush().unwrap();
@@ -221,7 +221,7 @@ fn main() {
                         Err(_) => 0,
                     };
                     device.cpu.set_programm_counter(address);
-                }
+                },
                 Event::KeyDown { keycode: Some(Keycode::Num1), .. } => device.ppu.borrow().read_name_table(0),
                 Event::KeyDown { keycode: Some(Keycode::Num2), .. } => device.ppu.borrow().read_name_table(1),
                 _ => (),
