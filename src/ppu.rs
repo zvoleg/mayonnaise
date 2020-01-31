@@ -719,28 +719,21 @@ impl<'a> Ppu {
         }
     }
 
-    fn shifting_bg_registers(&mut self) {
-        self.bg_low_shift_register >>= self.fine_x_scroll;
-        self.bg_high_shift_register >>= self.fine_x_scroll;
-        self.bg_low_attribute_shift_register >>= self.fine_x_scroll;
-        self.bg_high_attribute_shift_register >>= self.fine_x_scroll;
-    }
-
     fn set_next_data_to_shift_registers(&mut self) {
-        self.bg_low_shift_register = (self.bg_low_shift_register & 0x00FF) | (self.next_background_low_pattern as u16) << 8;
-        self.bg_high_shift_register = (self.bg_high_shift_register & 0x00FF) | (self.next_background_high_pattern as u16) << 8;
+        self.bg_low_shift_register = (self.bg_low_shift_register & 0x00FF) | (self.next_background_low_pattern as u16) << 8 - self.fine_x_scroll;
+        self.bg_high_shift_register = (self.bg_high_shift_register & 0x00FF) | (self.next_background_high_pattern as u16) << 8 - self.fine_x_scroll;
 
         let attribute_idx_for_tile = (self.cur_addr.get_coarse_y() & 0x02) | ((self.cur_addr.get_coarse_x() >> 1) & 0x01);
         let low_attribute_bit = (self.next_background_attribute >> (attribute_idx_for_tile * 2)) & 0x01;
         self.bg_low_attribute_shift_register = (self.bg_low_attribute_shift_register & 0x00FF) | match low_attribute_bit {
             1 => 0xFF00,
             _ => 0x0000,
-        };
+        } >> self.fine_x_scroll;
         let high_attribute_bit = (self.next_background_attribute >> (attribute_idx_for_tile * 2) + 1) & 0x01;
         self.bg_high_attribute_shift_register = (self.bg_high_attribute_shift_register & 0x00FF) | match high_attribute_bit {
             1 => 0xFF00,
             _ => 0x0000,
-        };
+        } >> self.fine_x_scroll;
     }
 
     fn pop_bg_pixel(&mut self) -> u16 {
@@ -877,9 +870,6 @@ impl<'a> Ppu {
         let mut sprite_pixel_priority = 0;
         // background pixel
         if self.mask.background_enable() {
-            if self.in_visible_range && self.cycle == 1 {
-                self.shifting_bg_registers();
-            }
             if self.in_visible_range {
                 if self.mask.bg_enable_left_column() || self.cycle > 8 {
                     bg_pixel = self.pop_bg_pixel();
