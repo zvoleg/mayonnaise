@@ -6,3 +6,5 @@ SDL2.dll
 nes/
 docs/
 gif/
+*.log
+launch.json

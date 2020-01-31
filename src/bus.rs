@@ -11,6 +11,8 @@ pub struct Bus {
     controller_a: Rc<RefCell<Controller>>,
     cartridge: Option<Rc<RefCell<Cartridge>>>,
 
+    previous_data: u8,
+
     dma_enable: bool,
     dma_wait_clock: bool,
     oam_page: u16,
@@ -25,6 +27,8 @@ impl Bus {
             ppu,
             controller_a,
             cartridge: None,
+
+            previous_data: 0,
 
             dma_enable: false,
             dma_wait_clock: true,
@@ -57,8 +61,8 @@ impl Bus {
         data
     }
 
-    pub fn read_cpu_ram(&self, address: u16) -> u8 {
-        let mut data = 0;
+    pub fn read_cpu_ram(&mut self, address: u16) -> u8 {
+        let mut data = self.previous_data;
         if address <= 0x1FFF {
             data = self.cpu_ram[(address & 0x07FF) as usize];
         } else if address >= 0x2000 && address <= 0x3FFF {
@@ -72,10 +76,12 @@ impl Bus {
             self.cartridge.as_ref().unwrap().borrow_mut().
                 read_prg_rom(address, &mut data);
         }
+        self.previous_data = data;
         data
     }
 
     pub fn write_cpu_ram(&mut self, address: u16, data: u8) {
+        self.previous_data = data;
         if address <= 0x1FFF {
             self.cpu_ram[(address & 0x07FF) as usize] = data;
         } else if address >= 0x2000 && address <= 0x3FFF {

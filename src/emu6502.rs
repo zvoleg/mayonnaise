@@ -219,7 +219,7 @@ impl Emu6502 {
     }
 
     fn read_data(&self, address: u16) -> u8 {
-        self.bus.borrow().read_cpu_ram(address)
+        self.bus.borrow_mut().read_cpu_ram(address)
     }
 
     fn write_data(&self, data: u8) {

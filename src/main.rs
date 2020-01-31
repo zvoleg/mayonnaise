@@ -61,7 +61,7 @@ impl Device {
     }
 
     fn read_pixel_pattern_table(&self, idx: usize, table: u8) -> u32 {
-        let pattern = &self.ppu.borrow().get_pattern_table(table);
+        let pattern = &self.ppu.borrow().patterns[table as usize];
         match pattern[idx] {
             0 => 0x222222,
             1 => 0x5555AA,
@@ -107,7 +107,7 @@ impl Device {
             screen.set_point_at_main_color_area(main_color);
 
             (0..16).for_each(|x| {
-                let color_addr = self.ppu.borrow().read_ppu(0x3F00 + x +1);
+                let color_addr = self.ppu.borrow().read_ppu(0x3F00 + x + 1);
                 let color = self.ppu.borrow().pallette_colors[color_addr as usize];
                 screen.set_point_at_background_color_area((x / 4) as usize, color);
             });

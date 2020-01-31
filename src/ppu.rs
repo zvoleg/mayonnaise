@@ -272,7 +272,7 @@ impl Oam {
 
 pub struct Ppu {
     pub pallette_colors: [u32; 0x40],
-    patterns: [[u8; 0x4000]; 2], // not necessary for emulation
+    pub patterns: [[u8; 0x4000]; 2], // not necessary for emulation
 
     // 0x2000 - 0x2FFF // (30 line by 32 sprites (960 bytes or 0x03C0) and 2 line with collor) * 4 name-table
     // 2 name-table stores on device and 2 can stores on cartridge
@@ -338,6 +338,8 @@ pub struct Ppu {
     sprite_priority_shift_register:       [u8; 8],
     sprite_attribute_shift_register:      [u8; 8],
 
+    expected_sprite_zero_hit:   bool,
+
     oam_counter: usize,
     oam_tmp_counter: usize,
 
@@ -399,6 +401,8 @@ impl<'a> Ppu {
             sprite_high_shift_register:       [0; 8],
             sprite_priority_shift_register:   [0; 8],
             sprite_attribute_shift_register:  [0; 8],
+
+            expected_sprite_zero_hit:   false,
 
             oam_counter: 0,
             oam_tmp_counter: 0,
@@ -484,7 +488,7 @@ impl<'a> Ppu {
                 let increment = self.control.get_increment();
                 self.cur_addr.add_increment(increment);
             },
-            _ => panic!("wrong addres when cpu try read ppu registers, address: {:04X}", address),
+            _ => data = 0, //panic!("wrong addres when cpu try read ppu registers, address: {:04X}", address),
         };
         data
     }
@@ -519,7 +523,7 @@ impl<'a> Ppu {
                     println!("ppu: update MASK register: {:02X} ({:08b})", self.mask.data, self.mask.data);
                 }
             },
-            // 0x0002 => (),
+            0x0002 => (),
             0x0003 => self.oam_address_reg = data,
             0x0004 => {
                self.write_oam_byte(self.oam_address_reg, data);
@@ -676,10 +680,6 @@ impl<'a> Ppu {
         }
     }
 
-    pub fn get_pattern_table(&self, table: u8) -> [u8; 0x4000] {
-        self.patterns[table as usize]
-    }
-
     pub fn nmi_require(&self) -> bool {
         self.nmi_require
     }
@@ -763,7 +763,7 @@ impl<'a> Ppu {
                 let sprite_id = oam.id as u16;
 
                 let offset = match oam.vertical_flip() {
-                    true  => self.control.sprite_size() as u16 - y_offset,
+                    true  => self.control.sprite_size() as u16 - y_offset - 1,
                     false => y_offset
                 };
 
@@ -793,7 +793,7 @@ impl<'a> Ppu {
         }
     }
 
-    fn pop_sprite_pixel_with_priority(&mut self) -> u16 {
+    fn pop_sprite_pixel_with_priority(&mut self, bg_pixel: u16) -> u16 {
         let mut bit0;
         let mut bit1;
         let mut bit23;
@@ -809,7 +809,14 @@ impl<'a> Ppu {
                 self.sprite_high_shift_register[i] >>= 1;
                 self.sprite_low_shift_register[i] >>= 1;
                 if pixel == 0 && (bit0 != 0 || bit1 != 0) {
-                    pixel = (bit4) | (bit23 << 2) | (bit1 << 1) | bit0;
+                    pixel = (bit4 << 4) | (bit23 << 2) | (bit1 << 1) | bit0;
+                }
+                if i == 0 && self.expected_sprite_zero_hit && pixel > 0 && !self.status.hit_zero_sprite() {
+                    if self.mask.bg_enable_left_column() && self.mask.sprite_enable_left_column() {
+                        if bg_pixel > 0 && pixel > 0 {
+                            self.status.set_hit_zero_sprite(true);
+                        }
+                    }
                 }
             } else {
                 oam.x_position -= 1;
@@ -927,9 +934,11 @@ impl<'a> Ppu {
             }
             if self.cycle > 64 && self.cycle <= 256 && self.oam_counter < 64 && self.oam_tmp_counter <= 8 {
                 let oam_candidate = self.oam_memory[self.oam_counter];
-                self.oam_counter += 1;
                 let offset_by_y = (self.skanline as i16 + 1) - (oam_candidate.y_position as i16);
-                if offset_by_y >= 0 && offset_by_y <= self.control.sprite_size() as i16 {
+                if offset_by_y >= 0 && offset_by_y < self.control.sprite_size() as i16 {
+                    if self.oam_counter == 0 && !self.expected_sprite_zero_hit && !self.status.hit_zero_sprite() {
+                        self.expected_sprite_zero_hit = true;
+                    }
                     if self.oam_tmp_counter < 8 {
                         self.oam_tmp[self.oam_tmp_counter] = oam_candidate;
                         self.oam_tmp_counter += 1;
@@ -937,10 +946,11 @@ impl<'a> Ppu {
                         self.status.set_sprite_overlow(true);
                     }
                 }
+                self.oam_counter += 1;
             }
             // sprite rendering
             if self.mask.sprite_enable_left_column() || self.cycle > 8 {
-                let sprite_pixel_with_priority = self.pop_sprite_pixel_with_priority();
+                let sprite_pixel_with_priority = self.pop_sprite_pixel_with_priority(bg_pixel);
                 sprite_pixel = sprite_pixel_with_priority & 0x0F;
                 sprite_pixel_priority = sprite_pixel_with_priority >> 4;
             }
@@ -948,9 +958,6 @@ impl<'a> Ppu {
 
         if self.in_visible_range {
             let color_address;
-            if bg_pixel & 0x03 != 0 && sprite_pixel & 0x03 != 0 && !self.status.hit_zero_sprite() {
-                self.status.set_hit_zero_sprite(true);
-            }
 
             if bg_pixel & 0x03 == 0 && sprite_pixel & 0x03 != 0 {
                 color_address = 0x3F10 + sprite_pixel;
@@ -997,6 +1004,7 @@ impl<'a> Ppu {
             self.status.set_vblank(false);
             self.status.set_sprite_overlow(false);
             self.status.set_hit_zero_sprite(false);
+            self.expected_sprite_zero_hit = false;
             self.sprite_low_shift_register = [0; 8];
             self.sprite_high_shift_register = [0; 8];
             self.sprite_attribute_shift_register = [0; 8];

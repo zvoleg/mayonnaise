@@ -60,24 +60,30 @@ impl Cartridge {
     }
 
     pub fn read_prg_rom(&self, address: u16, data: &mut u8) {
-        let idx = self.mapper.prg_addr(address);
-        *data = self.prg_rom[idx];
+        let mut cartridge_addr = 0;
+        if self.mapper.prg_addr(address, &mut cartridge_addr) {
+            *data = self.prg_rom[cartridge_addr];
+        }
     }
 
     pub fn write_to_prg_rom(&mut self, address: u16, data: u8) {
-        let idx = self.mapper.prg_addr(address);
-        self.prg_rom[idx] = data;
+        let mut cartridge_addr = 0;
+        if self.mapper.prg_addr(address, &mut cartridge_addr) {
+            self.prg_rom[cartridge_addr] = data;
+        }
     }
 
     pub fn read_chr_rom(&self, address: u16, data: &mut u8) {
-        let idx = self.mapper.chr_addr(address);
-        *data = self.chr_rom[idx];
+        let mut cartridge_addr = 0;
+        if self.mapper.chr_addr(address, &mut cartridge_addr) {
+            *data = self.chr_rom[cartridge_addr];
+        }
     }
 }
 
 trait Mapper {
-    fn prg_addr(&self, address: u16) -> usize;
-    fn chr_addr(&self, address: u16) -> usize;
+    fn prg_addr(&self, address: u16, cartridge_addr: &mut usize) -> bool;
+    fn chr_addr(&self, address: u16, cartridge_addr: &mut usize) -> bool;
 }
 
 struct Mapper000 {
@@ -86,20 +92,23 @@ struct Mapper000 {
 }
 
 impl Mapper for Mapper000 {
-    fn prg_addr(&self, address: u16) -> usize {
+    fn prg_addr(&self, address: u16, cartridge_addr: &mut usize) -> bool {
         if address >= 0x8000 {
-            let idx = match self.size_prg {
+            *cartridge_addr = match self.size_prg {
             1 => address & 0x3FFF,
             2 => address & 0x7FFF,
-            _ => 0,
-            };
-            idx as usize
-        } else {
-            panic!("mapper_000: prg_address out of range (address: {:04X})", address);
+            _ => panic!("wrong size of size_prg: {}", self.size_prg),
+            } as usize;
+            return true;
         }
+        false
     }
 
-    fn chr_addr(&self, address: u16) -> usize {
-        address as usize
+    fn chr_addr(&self, address: u16, cartridge_addr: &mut usize) -> bool {
+        if address < 0x2000 {
+            *cartridge_addr = address as usize;
+            return true;
+        }
+        false
     }
 }
