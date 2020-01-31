@@ -811,9 +811,10 @@ impl<'a> Ppu {
                 if pixel == 0 && (bit0 != 0 || bit1 != 0) {
                     pixel = (bit4 << 4) | (bit23 << 2) | (bit1 << 1) | bit0;
                 }
-                if i == 0 && self.expected_sprite_zero_hit && pixel > 0 && !self.status.hit_zero_sprite() {
+                // determine of sprite zero hit
+                if i == 0 && self.expected_sprite_zero_hit && pixel & 0x03 > 0 && !self.status.hit_zero_sprite() {
                     if self.mask.bg_enable_left_column() && self.mask.sprite_enable_left_column() {
-                        if bg_pixel > 0 && pixel > 0 {
+                        if bg_pixel & 0x03 > 0{
                             self.status.set_hit_zero_sprite(true);
                         }
                     }
