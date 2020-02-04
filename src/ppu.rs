@@ -756,7 +756,7 @@ impl<'a> Ppu {
                 let sprite_id = oam.id as u16;
 
                 let offset = match oam.vertical_flip() {
-                    true  => self.control.sprite_size() as u16 - y_offset - 1,
+                    true  => self.control.sprite_size() as u16 - y_offset,
                     false => y_offset
                 };
 
@@ -878,6 +878,7 @@ impl<'a> Ppu {
             }
 
             if self.cycle >= 321 && self.cycle <= 336 && (self.skanline <= 239 || self.skanline == 261) {
+                self.pop_bg_pixel();
                 self.fetching_data_trough_cycles();
             }
 
@@ -925,7 +926,7 @@ impl<'a> Ppu {
             }
             if self.cycle > 64 && self.cycle <= 256 && self.oam_counter < 64 && self.oam_tmp_counter <= 8 {
                 let oam_candidate = self.oam_memory[self.oam_counter];
-                let offset_by_y = (self.skanline as i16 + 1) - (oam_candidate.y_position as i16);
+                let offset_by_y = self.skanline as i16 - oam_candidate.y_position as i16;
                 if offset_by_y >= 0 && offset_by_y < self.control.sprite_size() as i16 {
                     if self.oam_counter == 0 && !self.expected_sprite_zero_hit && !self.status.hit_zero_sprite() {
                         self.expected_sprite_zero_hit = true;
@@ -964,13 +965,13 @@ impl<'a> Ppu {
 
         if self.cycle == 257 && self.skanline <= 239 {
             std::mem::swap(&mut self.oam_tmp, &mut self.oam_buffer);
+            self.update_sprite_shift_registers();
         }
 
         self.cycle += 1;
         if self.cycle > 340 {
             self.cycle = 0;
             self.skanline += 1;
-            self.update_sprite_shift_registers();
             self.oam_counter = 0;
             self.oam_tmp_counter = 0;
             if self.skanline > 261 {
