@@ -277,7 +277,7 @@ pub struct Ppu {
     // 0x2000 - 0x2FFF // (30 line by 32 sprites (960 bytes or 0x03C0) and 2 line with collor) * 4 name-table
     // 2 name-table stores on device and 2 can stores on cartridge
     // each name table take 1kb (0x0400) of memory
-    name_table: [u8; 0x0800],
+    name_table: [[u8; 0x0400]; 2],
     pallette: [u8; 0x0020], // 0x3F00 - 0x3F1F
 
     // OAM:
@@ -358,7 +358,7 @@ impl<'a> Ppu {
         Ppu {
             pallette_colors,
             patterns:   [[0; 0x4000]; 2],
-            name_table: [0; 0x0800],
+            name_table: [[0; 0x0400]; 2],
             pallette:   [0; 0x0020],
 
             oam_memory: [Oam::new(); 64],
@@ -576,24 +576,24 @@ impl<'a> Ppu {
             match self.mirroring {
                 Mirroring::HORISONTAL => {
                     if address < 0x400 {
-                        data = self.name_table[address];
+                        data = self.name_table[0][address];
                     } else if address >= 0x400 && address < 0x800 {
-                        data = self.name_table[address & 0x3FF];
+                        data = self.name_table[0][address & 0x3FF];
                     } else if address >= 0x800 && address < 0xC00 {
-                        data = self.name_table[address & 0x7FF];
+                        data = self.name_table[1][address & 0x3FF];
                     } else if address >= 0xC00 && address < 0x1000 {
-                        data = self.name_table[address & 0x7FF];
+                        data = self.name_table[1][address & 0x3FF];
                     }
                 },
                 Mirroring::VERTICAL => {
                     if address < 0x400 {
-                        data = self.name_table[address];
+                        data = self.name_table[0][address];
                     } else if address >= 0x400 && address < 0x800 {
-                        data = self.name_table[address];
+                        data = self.name_table[1][address & 0x3FF];
                     } else if address >= 0x800 && address < 0xC00 {
-                        data = self.name_table[address & 0x3FF];
+                        data = self.name_table[0][address & 0x3FF];
                     } else if address >= 0xC00 && address < 0x1000 {
-                        data = self.name_table[address & 0x7FF];
+                        data = self.name_table[1][address & 0x3FF];
                     }
                 },
                 _ => (),
@@ -625,24 +625,24 @@ impl<'a> Ppu {
             match self.mirroring {
                 Mirroring::HORISONTAL => {
                     if address < 0x400 {
-                        self.name_table[address] = data;
-                    } else if address >= 0x400 && address < 0x0800 {
-                        self.name_table[address & 0x3FF] = data;
-                    } else if address >= 0x800 && address < 0x0C00 {
-                        self.name_table[address & 0x7FF] = data;
+                        self.name_table[0][address] = data;
+                    } else if address >= 0x400 && address < 0x800 {
+                        self.name_table[0][address & 0x3FF] = data;
+                    } else if address >= 0x800 && address < 0xC00 {
+                        self.name_table[1][address & 0x3FF] = data;
                     } else if address >= 0xC00 && address < 0x1000 {
-                        self.name_table[address & 0x7FF] = data;
+                        self.name_table[1][address & 0x3FF] = data;
                     }
                 },
                 Mirroring::VERTICAL => {
                     if address < 0x400 {
-                        self.name_table[address] = data;
-                    } else if address >= 0x400 && address < 0x0800 {
-                        self.name_table[address] = data;
-                    } else if address >= 0x800 && address < 0x0C00 {
-                        self.name_table[address & 0x3FF] = data;
+                        self.name_table[0][address] = data;
+                    } else if address >= 0x400 && address < 0x800 {
+                        self.name_table[1][address & 0x3FF] = data;
+                    } else if address >= 0x800 && address < 0xC00 {
+                        self.name_table[0][address & 0x3FF] = data;
                     } else if address >= 0xC00 && address < 0x1000 {
-                        self.name_table[address & 0x7FF] = data;
+                        self.name_table[1][address & 0x3FF] = data;
                     }
                 },
                 _ => (),
@@ -707,12 +707,11 @@ impl<'a> Ppu {
         }
     }
 
-    pub fn read_name_table(&self, name_table: u16) {
-        let base_addr = 0x0400 * name_table;
+    pub fn read_name_table(&self, name_table: usize) {
         for row in 0 .. 32 {
             for column in 0 .. 32 {
                 let offset = row * 32 + column;
-                let value = self.name_table[(base_addr + offset) as usize];
+                let value = self.name_table[name_table][offset];
                 print!("{:02X} ", value);
             }
             println!("");
@@ -756,7 +755,7 @@ impl<'a> Ppu {
                 let sprite_id = oam.id as u16;
 
                 let offset = match oam.vertical_flip() {
-                    true  => self.control.sprite_size() as u16 - y_offset,
+                    true  => self.control.sprite_size() as u16 - y_offset - 1,
                     false => y_offset
                 };
 
@@ -795,23 +794,25 @@ impl<'a> Ppu {
         for i in 0..8 {
             let oam = &mut self.oam_buffer[i];
             if oam.x_position == 0 {
-                bit4 = self.sprite_priority_shift_register[i] as u16;
-                bit23 = self.sprite_attribute_shift_register[i] as u16;
-                bit1 = (self.sprite_high_shift_register[i] & 0x01) as u16;
-                bit0 = (self.sprite_low_shift_register[i] & 0x01) as u16;
-                self.sprite_high_shift_register[i] >>= 1;
-                self.sprite_low_shift_register[i] >>= 1;
-                if pixel == 0 && (bit0 != 0 || bit1 != 0) {
-                    pixel = (bit4 << 4) | (bit23 << 2) | (bit1 << 1) | bit0;
-                }
-                // determine of sprite zero hit
-                if i == 0 && self.expected_sprite_zero_hit && pixel & 0x03 > 0 && !self.status.hit_zero_sprite() {
-                    if self.mask.bg_enable_left_column() && self.mask.sprite_enable_left_column() {
-                        if bg_pixel & 0x03 > 0{
-                            self.status.set_hit_zero_sprite(true);
+                if pixel == 0 && oam.y_position != 0xFF{
+                    bit4 = self.sprite_priority_shift_register[i] as u16;
+                    bit23 = self.sprite_attribute_shift_register[i] as u16;
+                    bit1 = (self.sprite_high_shift_register[i] & 0x01) as u16;
+                    bit0 = (self.sprite_low_shift_register[i] & 0x01) as u16;
+                    if pixel == 0 && (bit0 != 0 || bit1 != 0) {
+                        pixel = (bit4 << 4) | (bit23 << 2) | (bit1 << 1) | bit0;
+                    }
+                    // determine of sprite zero hit
+                    if i == 0 && self.expected_sprite_zero_hit && pixel & 0x03 > 0 && !self.status.hit_zero_sprite() {
+                        if self.mask.bg_enable_left_column() && self.mask.sprite_enable_left_column() {
+                            if bg_pixel & 0x03 > 0{
+                                self.status.set_hit_zero_sprite(true);
+                            }
                         }
                     }
                 }
+                self.sprite_high_shift_register[i] >>= 1;
+                self.sprite_low_shift_register[i] >>= 1;
             } else {
                 oam.x_position -= 1;
             }
@@ -873,6 +874,8 @@ impl<'a> Ppu {
             if self.in_visible_range {
                 if self.mask.bg_enable_left_column() || self.cycle > 8 {
                     bg_pixel = self.pop_bg_pixel();
+                } else {
+                    self.pop_bg_pixel();
                 }
                 self.fetching_data_trough_cycles();
             }
@@ -945,6 +948,8 @@ impl<'a> Ppu {
                 let sprite_pixel_with_priority = self.pop_sprite_pixel_with_priority(bg_pixel);
                 sprite_pixel = sprite_pixel_with_priority & 0x0F;
                 sprite_pixel_priority = sprite_pixel_with_priority >> 4;
+            } else {
+                self.pop_sprite_pixel_with_priority(bg_pixel);
             }
         }
 
