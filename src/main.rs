@@ -94,7 +94,7 @@ impl Device {
             self.cpu.nmi();
             self.ppu.borrow_mut().reset_nmi_require();
         }
-        self.clock_counter = self.clock_counter.overflowing_add(1).0;
+        self.clock_counter = self.clock_counter.wrapping_add(1);
 
         match color {
             Some(color) => screen.set_point_at_main_area(color),

@@ -129,7 +129,7 @@ impl Bus {
 
     pub fn write_dma_byte(&mut self) {
         self.ppu.borrow_mut().write_oam_byte(self.oam_addr, self.oam_data);
-        self.oam_addr = self.oam_addr.overflowing_add(1).0;
+        self.oam_addr = self.oam_addr.wrapping_add(1);
         if self.oam_addr == 0x00 {
             self.dma_enable = false;
         }

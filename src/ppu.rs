@@ -228,7 +228,7 @@ impl AddresRegister {
     }
 
     fn add_increment(&mut self, increment: u16) {
-        self.data = self.data.overflowing_add(increment).0;
+        self.data = self.data.wrapping_add(increment);
     }
 }
 
@@ -527,7 +527,7 @@ impl<'a> Ppu {
             0x0003 => self.oam_address_reg = data,
             0x0004 => {
                self.write_oam_byte(self.oam_address_reg, data);
-               self.oam_address_reg = self.oam_address_reg.overflowing_add(1).0;
+               self.oam_address_reg = self.oam_address_reg.wrapping_add(1);
             },
             0x0005 => {
                 if !self.latch {
