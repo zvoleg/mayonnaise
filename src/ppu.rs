@@ -1,5 +1,3 @@
-extern crate rand;
-
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::program::Cartridge;

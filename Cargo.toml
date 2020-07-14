@@ -11,5 +11,4 @@ name = "emu"
 path = "src/lib.rs"
 
 [dependencies]
-sdl2 = "0.32.2"
-rand = "*"
+spriter = { git="https://gitlab.com/olegRus/spriter" }
