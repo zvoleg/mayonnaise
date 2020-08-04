@@ -170,6 +170,79 @@ impl Program for Device {
     fn is_execute(&self) -> bool {
         self.is_run
     }
+
+    fn handle_key_input(&mut self, key: Key) {
+        match key {
+            Key::Escape => self.is_run = false,
+            Key::C => self.clock_type = ClockType::Manual,
+            Key::A => {
+                let clock_type = self.clock_type;
+                self.clock_type = match clock_type {
+                    ClockType::Auto => ClockType::Undefined,
+                    _ => ClockType::Auto,
+                };
+                println!("clock type: {:?}", self.clock_type);
+            },
+            Key::F => self.clock_type = ClockType::Frame,
+            Key::N => {
+                let mut input = String::new();
+                stdout().flush().unwrap();
+                stdin().read_line(&mut input).unwrap();
+                match input.trim().parse::<u32>() {
+                    Ok(num) => self.clock_type = ClockType::Amount(num),
+                    Err(_) => self.clock_type = ClockType::Undefined,
+                }
+            },
+            Key::R => {
+                self.ppu.borrow_mut().reset();
+                self.cpu.reset();
+            },
+            Key::D => self.cpu.debug = !self.cpu.debug,
+            Key::E => {
+                let debug = self.ppu.borrow().debug;
+                self.ppu.borrow_mut().debug = !debug;
+            },
+            Key::V => {
+                let mut input = String::new();
+                stdout().flush().unwrap();
+                stdin().read_line(&mut input).unwrap();
+                let parse_result = u16::from_str_radix(input.trim(), 16);
+                match parse_result {
+                    Ok(idx) => self.print_memory_by_address(idx, 3),
+                    Err(_)  => println!("index must be in hex format"),
+                }
+            },
+            Key::S => {
+                let mut input = String::new();
+                stdout().flush().unwrap();
+                stdin().read_line(&mut input).unwrap();
+                let mut input_parts = input.split_whitespace();
+                let address = u16::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
+                let data = u8::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
+                self.bus.borrow_mut().write_cpu_ram(address, data);
+                println!("write: {:04X} {:02X}", address, data);
+            },
+            Key::P => {
+                let mut input = String::new();
+                stdout().flush().unwrap();
+                stdin().read_line(&mut input).unwrap();
+                let address = match u16::from_str_radix(input.trim(), 16) {
+                    Ok(value) => value,
+                    Err(_) => 0,
+                };
+                self.cpu.set_programm_counter(address);
+            },
+            Key::Up => self.controller_a.borrow_mut().update_register(0x10),
+            Key::Down => self.controller_a.borrow_mut().update_register(0x20),
+            Key::Left => self.controller_a.borrow_mut().update_register(0x40),
+            Key::Right => self.controller_a.borrow_mut().update_register(0x80),
+            Key::Z => self.controller_a.borrow_mut().update_register(0x01),
+            Key::X => self.controller_a.borrow_mut().update_register(0x02),
+            Key::LControl => self.controller_a.borrow_mut().update_register(0x04),
+            Key::Space => self.controller_a.borrow_mut().update_register(0x08),
+            _ => (),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -185,7 +258,7 @@ fn main() {
     let pixel_size = 3;
     let width = 522 * pixel_size;
     let height = 242 * pixel_size;
-    let (window, mut handler) = spriter::init("mayonnaise", width, height, false);
+    let (window, handler) = spriter::init("mayonnaise", width, height, false);
     let window = Rc::new(RefCell::new(window));
     let screen = Screen::new(window.clone(), pixel_size);
 
@@ -199,109 +272,6 @@ fn main() {
             device.borrow_mut().screen.set_point_at_sprite_area(pixel, table);
         }
     }
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::Escape, move || {
-        dev_copy.borrow_mut().is_run = false;
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::C, move || dev_copy.borrow_mut().clock_type = ClockType::Manual);
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::A, move || {
-        let clock_type = dev_copy.borrow().clock_type;
-        dev_copy.borrow_mut().clock_type = match clock_type {
-            ClockType::Auto => ClockType::Undefined,
-            _ => ClockType::Auto,
-        };
-        println!("clock type: {:?}", dev_copy.borrow().clock_type);
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::F, move || dev_copy.borrow_mut().clock_type = ClockType::Frame);
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::N, move || {
-        let mut input = String::new();
-        stdout().flush().unwrap();
-        stdin().read_line(&mut input).unwrap();
-        match input.trim().parse::<u32>() {
-            Ok(num) => dev_copy.borrow_mut().clock_type = ClockType::Amount(num),
-            Err(_) => dev_copy.borrow_mut().clock_type = ClockType::Undefined,
-        }
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::R, move || {
-        dev_copy.borrow_mut().ppu.borrow_mut().reset();
-        dev_copy.borrow_mut().cpu.reset();
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::D, move || {
-        let debug = dev_copy.borrow().cpu.debug;
-        dev_copy.borrow_mut().cpu.debug = !debug;
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::E, move || {
-        let debug = dev_copy.borrow().ppu.borrow().debug;
-        dev_copy.borrow_mut().ppu.borrow_mut().debug = !debug;
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::V, move || {
-        let mut input = String::new();
-        stdout().flush().unwrap();
-        stdin().read_line(&mut input).unwrap();
-        let parse_result = u16::from_str_radix(input.trim(), 16);
-        match parse_result {
-            Ok(idx) => dev_copy.borrow().print_memory_by_address(idx, 3),
-            Err(_)  => println!("index must be in hex format"),
-        }
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::S, move || {
-        let mut input = String::new();
-        stdout().flush().unwrap();
-        stdin().read_line(&mut input).unwrap();
-        let mut input_parts = input.split_whitespace();
-        let address = u16::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
-        let data = u8::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
-        dev_copy.borrow_mut().bus.borrow_mut().write_cpu_ram(address, data);
-        println!("write: {:04X} {:02X}", address, data);
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::P, move || {
-        let mut input = String::new();
-        stdout().flush().unwrap();
-        stdin().read_line(&mut input).unwrap();
-        let address = match u16::from_str_radix(input.trim(), 16) {
-            Ok(value) => value,
-            Err(_) => 0,
-        };
-        dev_copy.borrow_mut().cpu.set_programm_counter(address);
-    });
-
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::Up, move || dev_copy.borrow_mut().controller_a.borrow_mut().update_register(0x10));
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::Down, move || dev_copy.borrow_mut().controller_a.borrow_mut().update_register(0x20));
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::Left, move || dev_copy.borrow_mut().controller_a.borrow_mut().update_register(0x40));
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::Right, move || dev_copy.borrow_mut().controller_a.borrow_mut().update_register(0x80));
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::Z, move || dev_copy.borrow_mut().controller_a.borrow_mut().update_register(0x01));
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::X, move || dev_copy.borrow_mut().controller_a.borrow_mut().update_register(0x02));
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::LControl, move || dev_copy.borrow_mut().controller_a.borrow_mut().update_register(0x04));
-    let dev_copy = device.clone();
-    handler.add_key_handler(Key::Space, move || dev_copy.borrow_mut().controller_a.borrow_mut().update_register(0x08));
 
     handler.run(window.clone(), Some(device));
 }
