@@ -1,34 +1,44 @@
+extern crate spriter;
+
+use std::collections::HashSet;
+use std::rc::Rc;
+use std::cell::RefCell;
+
+use spriter::Key;
+
 pub struct Controller {
-    latch: bool,
     register: u8,
+    pressed_keys: Rc<RefCell<HashSet<Key>>>,
 }
 
 impl Controller {
-    pub fn new() -> Controller {
+    pub fn new(pressed_keys: Rc<RefCell<HashSet<Key>>>) -> Controller {
         Controller {
-            latch: false,
             register: 0,
+            pressed_keys,
         }
     }
 
-    pub fn set_latch(&mut self, latch: bool) {
-        match latch {
-            true  => {
-                self.register = 0;
-                self.latch = latch;
-            },
-            false => self.latch = latch,
+    pub fn update_register_by_input(&mut self) {
+        let mut register = 0;
+        for key in self.pressed_keys.borrow().iter() {
+            match key {
+                Key::Up => register |= 0x10,
+                Key::Down => register |= 0x20,
+                Key::Left => register |= 0x40,
+                Key::Right => register |= 0x80,
+                Key::Z => register |= 0x01,
+                Key::X => register |= 0x02,
+                Key::LControl => register |= 0x04,
+                Key::Space => register |= 0x08,
+                _ => ()
+            }
         }
-    }
-
-    pub fn input_access(&self) -> bool {
-        self.latch
+        self.register = register;
     }
 
     pub fn update_register(&mut self, data: u8) {
-        if self.latch {
-            self.register |= data;
-        }
+        self.register |= data;
     }
 
     pub fn read_bit(&mut self) -> u8 {

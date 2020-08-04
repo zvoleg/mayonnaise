@@ -4,9 +4,13 @@ use super::bus::Bus;
 
 macro_rules! op {
     ($ind: literal, $addr:ident, $instr:ident, $amount: expr) => {
-        Op { addressing_mode_name: stringify!($addr), addressing_mode: &Emu6502::$addr,
-             instruction_name: stringify!($instr), instruction: &Emu6502::$instr,
-             cycle_amount: $amount }
+        Op {
+            addressing_mode_name: stringify!($addr),
+            addressing_mode: &Emu6502::$addr,
+            instruction_name: stringify!($instr),
+            instruction: &Emu6502::$instr,
+            cycle_amount: $amount
+        }
     };
 }
 

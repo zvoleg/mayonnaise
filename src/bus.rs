@@ -8,7 +8,7 @@ use crate::environment::control::Controller;
 pub struct Bus {
     cpu_ram: [u8; 0x0800],
     ppu: Rc<RefCell<Ppu>>,
-    controller_a: Rc<RefCell<Controller>>,
+    controller_a: Controller,
     cartridge: Option<Rc<RefCell<Cartridge>>>,
 
     previous_data: u8,
@@ -21,7 +21,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(controller_a: Rc<RefCell<Controller>>, ppu: Rc<RefCell<Ppu>>) -> Bus {
+    pub fn new(controller_a: Controller, ppu: Rc<RefCell<Ppu>>) -> Bus {
         Bus {
             cpu_ram: [0; 0x0800],
             ppu,
@@ -51,7 +51,7 @@ impl Bus {
             data = self.ppu.borrow().
                 cpu_read_only(address & 0x0007);
         } else if address == 0x4016 {
-            data = self.controller_a.as_ref().borrow_mut().read_register();
+            data = self.controller_a.read_register();
         } else if address == 0x4017 {
             data = 0;
         } else if address >= 0x4020 {
@@ -69,7 +69,7 @@ impl Bus {
             data = self.ppu.borrow_mut().
                 cpu_read(address & 0x0007);
         } else if address == 0x4016 {
-            data = self.controller_a.as_ref().borrow_mut().read_bit();
+            data = self.controller_a.read_bit();
         } else if address == 0x4017 {
             data = 0;
         } else if address >= 0x4020 {
@@ -92,7 +92,7 @@ impl Bus {
             self.dma_wait_clock = true;
             self.oam_page = (data as u16) << 8;
         } else if address == 0x4016 {
-            self.controller_a.as_ref().borrow_mut().set_latch((data & 0x01) != 0);
+            self.controller_a.update_register_by_input();
         } else if address >= 0x4020 {
             println!("cpu: try write to cartridge {:04X} -> {:02X}", address, data);
             self.cartridge.as_ref().unwrap().borrow_mut().
@@ -101,9 +101,7 @@ impl Bus {
     }
 
     pub fn write_input_value(&mut self, input_value: u8) {
-        self.controller_a.as_ref().borrow_mut().set_latch(true);
-        self.controller_a.as_ref().borrow_mut().update_register(input_value);
-        self.controller_a.as_ref().borrow_mut().set_latch(false);
+        self.controller_a.update_register(input_value);
     }
 
     pub fn dma_enable(&self) -> bool {

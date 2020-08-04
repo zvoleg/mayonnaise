@@ -6,6 +6,7 @@ use spriter::Key;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::{stdin, stdout, Write};
+use std::collections::HashSet;
 
 use emu::emu6502::Emu6502;
 use emu::ppu::Ppu;
@@ -18,7 +19,6 @@ struct Device {
     screen: Screen,
     cpu: Emu6502,
     ppu: Rc<RefCell<Ppu>>,
-    controller_a: Rc<RefCell<Controller>>,
     bus: Rc<RefCell<Bus>>,
     clock_type: ClockType,
     clock_counter: u32,
@@ -26,16 +26,15 @@ struct Device {
 }
 
 impl Device {
-    fn new (screen: Screen) -> Device {
-        let controller_a = Rc::new(RefCell::new(Controller::new()));
+    fn new (screen: Screen, handler: Rc<RefCell<HashSet<Key>>>) -> Device {
+        let controller_a = Controller::new(handler);
         let ppu = Rc::new(RefCell::new(Ppu::new()));
-        let bus = Rc::new(RefCell::new(Bus::new(controller_a.clone(), ppu.clone())));
+        let bus = Rc::new(RefCell::new(Bus::new(controller_a, ppu.clone())));
         let cpu = Emu6502::new(bus.clone());
         Device {
             screen,
             cpu,
             ppu,
-            controller_a,
             bus,
             clock_type: ClockType::Undefined,
             clock_counter: 0,
@@ -139,10 +138,8 @@ impl Program for Device {
             ClockType::Auto => {
                 while !self.ppu.borrow().frame_complete {
                     self.clock();
-                    if self.controller_a.borrow().input_access() {
-                        break;
-                    }
                 }
+                self.ppu.borrow_mut().frame_complete = false;
             },
             ClockType::Frame => {
                 while !self.ppu.borrow().frame_complete {
@@ -160,11 +157,9 @@ impl Program for Device {
             ClockType::Undefined => (),
         }
         
-        if self.ppu.borrow().frame_complete || self.cpu.clock_complete {
-            self.ppu.borrow_mut().frame_complete = false;
-            self.cpu.clock_complete = false;
-            self.screen.window.borrow_mut().swap_buffers();
-        }
+        self.ppu.borrow_mut().frame_complete = false;
+        self.cpu.clock_complete = false;
+        self.screen.window.borrow_mut().swap_buffers();
     }
     
     fn is_execute(&self) -> bool {
@@ -232,14 +227,6 @@ impl Program for Device {
                 };
                 self.cpu.set_programm_counter(address);
             },
-            Key::Up => self.controller_a.borrow_mut().update_register(0x10),
-            Key::Down => self.controller_a.borrow_mut().update_register(0x20),
-            Key::Left => self.controller_a.borrow_mut().update_register(0x40),
-            Key::Right => self.controller_a.borrow_mut().update_register(0x80),
-            Key::Z => self.controller_a.borrow_mut().update_register(0x01),
-            Key::X => self.controller_a.borrow_mut().update_register(0x02),
-            Key::LControl => self.controller_a.borrow_mut().update_register(0x04),
-            Key::Space => self.controller_a.borrow_mut().update_register(0x08),
             _ => (),
         }
     }
@@ -263,7 +250,7 @@ fn main() {
     let screen = Screen::new(window.clone(), pixel_size);
 
     let cart = Cartridge::new("smb.nes");
-    let device = Rc::new(RefCell::new(Device::new(screen)));
+    let device = Rc::new(RefCell::new(Device::new(screen, handler.get_pressed_keys())));
     device.borrow_mut().insert_cartridge(cart);
     
     for table in 0 .. 2 {
