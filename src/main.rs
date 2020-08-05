@@ -6,7 +6,6 @@ use spriter::Key;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::{stdin, stdout, Write};
-use std::collections::HashSet;
 
 use emu::emu6502::Emu6502;
 use emu::ppu::Ppu;
@@ -26,8 +25,8 @@ struct Device {
 }
 
 impl Device {
-    fn new (screen: Screen, handler: Rc<RefCell<HashSet<Key>>>) -> Device {
-        let controller_a = Controller::new(handler);
+    fn new (screen: Screen) -> Device {
+        let controller_a = Controller::new();
         let ppu = Rc::new(RefCell::new(Ppu::new()));
         let bus = Rc::new(RefCell::new(Bus::new(controller_a, ppu.clone())));
         let cpu = Emu6502::new(bus.clone());
@@ -250,7 +249,7 @@ fn main() {
     let screen = Screen::new(window.clone(), pixel_size);
 
     let cart = Cartridge::new("smb.nes");
-    let device = Rc::new(RefCell::new(Device::new(screen, handler.get_pressed_keys())));
+    let device = Rc::new(RefCell::new(Device::new(screen)));
     device.borrow_mut().insert_cartridge(cart);
     
     for table in 0 .. 2 {

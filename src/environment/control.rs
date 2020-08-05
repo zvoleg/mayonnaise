@@ -1,27 +1,21 @@
 extern crate spriter;
 
-use std::collections::HashSet;
-use std::rc::Rc;
-use std::cell::RefCell;
-
-use spriter::Key;
+use spriter::{Key, handler};
 
 pub struct Controller {
     register: u8,
-    pressed_keys: Rc<RefCell<HashSet<Key>>>,
 }
 
 impl Controller {
-    pub fn new(pressed_keys: Rc<RefCell<HashSet<Key>>>) -> Controller {
+    pub fn new() -> Controller {
         Controller {
             register: 0,
-            pressed_keys,
         }
     }
 
     pub fn update_register_by_input(&mut self) {
         let mut register = 0;
-        for key in self.pressed_keys.borrow().iter() {
+        for key in handler::get_pressed_keys().iter() {
             match key {
                 Key::Up => register |= 0x10,
                 Key::Down => register |= 0x20,
