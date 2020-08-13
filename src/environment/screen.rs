@@ -7,7 +7,6 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 pub struct Screen {
-    pub window: Rc<RefCell<Window>>,
     main_area: Area,
     sprite_area_left: Area,
     sprite_area_right: Area,
@@ -17,12 +16,12 @@ pub struct Screen {
 }
 
 impl Screen {
-    pub fn new(window: Rc<RefCell<Window>>, pixel_size: u32, ) -> Screen {
+    pub fn new(window: &mut Window, pixel_size: u32, ) -> Screen {
         let main_screen_width = 256;
         let main_screen_height = 240;
         let pattern_tabel_width = 128;
 
-        let main_canvas = window.borrow_mut().create_canvas(
+        let main_canvas = window.create_canvas(
             0,
             0,
             main_screen_width * pixel_size,
@@ -31,7 +30,7 @@ impl Screen {
             main_screen_height);
         let main_area = Area::new(main_canvas, main_screen_width, main_screen_height);
 
-        let sprite_area_left_canvas = window.borrow_mut().create_canvas(
+        let sprite_area_left_canvas = window.create_canvas(
             main_screen_width * pixel_size + 20,
             0,
             pattern_tabel_width * pixel_size,
@@ -40,7 +39,7 @@ impl Screen {
             pattern_tabel_width);
         let sprite_area_left = Area::new(sprite_area_left_canvas, pattern_tabel_width, pattern_tabel_width);
 
-        let sprite_area_right_canvas = window.borrow_mut().create_canvas(
+        let sprite_area_right_canvas = window.create_canvas(
             (main_screen_width + pattern_tabel_width) * pixel_size + 22,
             0,
             pattern_tabel_width * pixel_size,
@@ -49,7 +48,7 @@ impl Screen {
             pattern_tabel_width);
             let sprite_area_right = Area::new(sprite_area_right_canvas, pattern_tabel_width, pattern_tabel_width);
 
-        let main_color_canvas = window.borrow_mut().create_canvas(
+        let main_color_canvas = window.create_canvas(
             main_screen_width * pixel_size + 20,
             pattern_tabel_width * pixel_size + 20,
             10 * pixel_size,
@@ -59,7 +58,7 @@ impl Screen {
         let main_color = Area::new(main_color_canvas, 1, 1);
 
         let background_pallettes: Vec<Area> = (0..4).map(|i| {
-            let background_pallette_canvas = window.borrow_mut().create_canvas(
+            let background_pallette_canvas = window.create_canvas(
                 main_screen_width * pixel_size + 20,
                 pattern_tabel_width * pixel_size + 20 + 11 * pixel_size * (1 + i),
                 40 * pixel_size,
@@ -70,7 +69,7 @@ impl Screen {
         }).collect();
 
         let sprite_pallettes: Vec<Area> = (0..4).map(|i| {
-            let sprite_pallette_canvas = window.borrow_mut().create_canvas(
+            let sprite_pallette_canvas = window.create_canvas(
                 main_screen_width * pixel_size + 20 + 41 * pixel_size,
                 pattern_tabel_width * pixel_size + 20 + 11 * pixel_size * (1 + i),
                 40 * pixel_size,
@@ -81,7 +80,6 @@ impl Screen {
         }).collect();
 
         Screen {
-            window,
             main_area,
             sprite_area_left,
             sprite_area_right,

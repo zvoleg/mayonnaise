@@ -158,7 +158,6 @@ impl Program for Device {
         
         self.ppu.borrow_mut().frame_complete = false;
         self.cpu.clock_complete = false;
-        self.screen.window.borrow_mut().swap_buffers();
     }
     
     fn is_execute(&self) -> bool {
@@ -244,20 +243,18 @@ fn main() {
     let pixel_size = 3;
     let width = 522 * pixel_size;
     let height = 242 * pixel_size;
-    let (window, handler) = spriter::init("mayonnaise", width, height, false);
-    let window = Rc::new(RefCell::new(window));
-    let screen = Screen::new(window.clone(), pixel_size);
+    let (mut window, handler) = spriter::init("mayonnaise", width, height);
+    let screen = Screen::new(&mut window, pixel_size);
 
     let cart = Cartridge::new("smb.nes");
-    let device = Rc::new(RefCell::new(Device::new(screen)));
-    device.borrow_mut().insert_cartridge(cart);
+    let mut device = Device::new(screen);
+    device.insert_cartridge(cart);
     
     for table in 0 .. 2 {
         for idx in 0 .. 128 * 128 {
-            let pixel = device.borrow().read_pixel_pattern_table(idx, table);
-            device.borrow_mut().screen.set_point_at_sprite_area(pixel, table);
+            let pixel = device.read_pixel_pattern_table(idx, table);
+            device.screen.set_point_at_sprite_area(pixel, table);
         }
     }
-
-    handler.run(window.clone(), Some(device));
+    handler.run(window, device);
 }
