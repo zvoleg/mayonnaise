@@ -1,10 +1,8 @@
 extern crate spriter;
 
 use spriter::window::Window;
-use spriter::window::Canvas;
-
-use std::rc::Rc;
-use std::cell::RefCell;
+use spriter::Canvas;
+use spriter::Color;
 
 pub struct Screen {
     main_area: Area,
@@ -115,7 +113,7 @@ impl Screen {
 }
 
 struct Area {
-    canvas: Rc<RefCell<Canvas>>,
+    canvas: Canvas,
     width: usize,
     height: usize,
     x: usize,
@@ -123,14 +121,14 @@ struct Area {
 }
 
 impl Area {
-    fn new(canvas: Rc<RefCell<Canvas>>, width: u32, height: u32) -> Area {
+    fn new(canvas: Canvas, width: u32, height: u32) -> Area {
         let width = width as usize;
         let height = height as usize;
         Area { canvas, width, height, x: 0, y: 0 }
     }
 
     fn set_next_point(&mut self, color: u32) {
-        self.canvas.borrow_mut().set_color(self.x, self.y, color);
+        _ = self.canvas.set_pixel(self.x as i32, self.y as i32, Color::from_u32(color));
         self.x += 1;
         if self.x == self.width {
             self.x = 0;

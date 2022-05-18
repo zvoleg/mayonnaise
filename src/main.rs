@@ -1,11 +1,13 @@
+#[macro_use]
 extern crate spriter;
 
-use spriter::Program;
+use std::time::Instant;
 use spriter::Key;
 
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::{stdin, stdout, Write};
+use std::time::Duration;
 
 use emu::emu6502::Emu6502;
 use emu::ppu::Ppu;
@@ -21,7 +23,6 @@ struct Device {
     bus: Rc<RefCell<Bus>>,
     clock_type: ClockType,
     clock_counter: u32,
-    is_run: bool,
 }
 
 impl Device {
@@ -37,7 +38,6 @@ impl Device {
             bus,
             clock_type: ClockType::Undefined,
             clock_counter: 0,
-            is_run: true,
         }
     }
 
@@ -77,7 +77,9 @@ impl Device {
     fn clock(&mut self) {
         let color = self.ppu.borrow_mut().clock();
         if self.clock_counter % 3 == 0 {
-            if self.bus.borrow().dma_enable() {
+            if !self.bus.borrow().dma_enable() {
+                self.cpu.clock();
+            } else {
                 if self.bus.borrow().dma_wait_clock() {
                     if self.clock_counter % 2 == 1 {
                         self.bus.borrow_mut().set_dma_wait_clock(false);
@@ -89,8 +91,6 @@ impl Device {
                         self.bus.borrow_mut().write_dma_byte();
                     }
                 }
-            } else {
-                self.cpu.clock();
             }
         }
         if self.ppu.borrow().nmi_require() {
@@ -104,6 +104,10 @@ impl Device {
             None => ()
         }
 
+        self.update_pallettes();
+    }
+
+    fn update_pallettes(&mut self) {
         if self.ppu.borrow().update_pallettes {
             let main_color_addr = self.ppu.borrow().read_ppu(0x3F00);
             let main_color = self.ppu.borrow().pallette_colors[main_color_addr as usize];
@@ -122,111 +126,67 @@ impl Device {
             self.ppu.borrow_mut().update_pallettes = false;
         }
     }
-}
 
-impl Program for Device {
-    fn run(&mut self) {
-        let clock_type = self.clock_type;
-        match clock_type {
-            ClockType::Manual => {
-                while !self.cpu.clock_complete {
-                    self.clock();
-                }
-                self.clock_type = ClockType::Undefined;
-            },
-            ClockType::Auto => {
-                while !self.ppu.borrow().frame_complete {
-                    self.clock();
-                }
-                self.ppu.borrow_mut().frame_complete = false;
-            },
-            ClockType::Frame => {
-                while !self.ppu.borrow().frame_complete {
-                    self.clock();
-                }
-                self.clock_type = ClockType::Undefined;
-            },
-            ClockType::Amount(num) => {
-                let current_clock = self.clock_counter;
-                while self.clock_counter < current_clock + num {
-                    self.clock();
-                }
-                self.clock_type = ClockType::Undefined;
-            },
-            ClockType::Undefined => (),
-        }
-        
-        self.ppu.borrow_mut().frame_complete = false;
-        self.cpu.clock_complete = false;
-    }
-    
-    fn is_execute(&self) -> bool {
-        self.is_run
-    }
-
-    fn handle_key_input(&mut self, key: Key) {
-        match key {
-            Key::Escape => self.is_run = false,
-            Key::C => self.clock_type = ClockType::Manual,
-            Key::A => {
-                let clock_type = self.clock_type;
-                self.clock_type = match clock_type {
-                    ClockType::Auto => ClockType::Undefined,
-                    _ => ClockType::Auto,
-                };
-                println!("clock type: {:?}", self.clock_type);
-            },
-            Key::F => self.clock_type = ClockType::Frame,
-            Key::N => {
-                let mut input = String::new();
-                stdout().flush().unwrap();
-                stdin().read_line(&mut input).unwrap();
-                match input.trim().parse::<u32>() {
-                    Ok(num) => self.clock_type = ClockType::Amount(num),
-                    Err(_) => self.clock_type = ClockType::Undefined,
-                }
-            },
-            Key::R => {
-                self.ppu.borrow_mut().reset();
-                self.cpu.reset();
-            },
-            Key::D => self.cpu.debug = !self.cpu.debug,
-            Key::E => {
-                let debug = self.ppu.borrow().debug;
-                self.ppu.borrow_mut().debug = !debug;
-            },
-            Key::V => {
-                let mut input = String::new();
-                stdout().flush().unwrap();
-                stdin().read_line(&mut input).unwrap();
-                let parse_result = u16::from_str_radix(input.trim(), 16);
-                match parse_result {
-                    Ok(idx) => self.print_memory_by_address(idx, 3),
-                    Err(_)  => println!("index must be in hex format"),
-                }
-            },
-            Key::S => {
-                let mut input = String::new();
-                stdout().flush().unwrap();
-                stdin().read_line(&mut input).unwrap();
-                let mut input_parts = input.split_whitespace();
-                let address = u16::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
-                let data = u8::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
-                self.bus.borrow_mut().write_cpu_ram(address, data);
-                println!("write: {:04X} {:02X}", address, data);
-            },
-            Key::P => {
-                let mut input = String::new();
-                stdout().flush().unwrap();
-                stdin().read_line(&mut input).unwrap();
-                let address = match u16::from_str_radix(input.trim(), 16) {
-                    Ok(value) => value,
-                    Err(_) => 0,
-                };
-                self.cpu.set_programm_counter(address);
-            },
-            _ => (),
-        }
+    fn handle_keys(&mut self) {
+        if_pressed!(Key::Escape, {spriter::program_stop()});
+        if_pressed!(Key::C, {self.clock_type = ClockType::Manual});
+        if_pressed!(Key::A, {
+            let clock_type = self.clock_type;
+            self.clock_type = match clock_type {
+                ClockType::Auto => ClockType::Undefined,
+                _ => ClockType::Auto,
+            };
+            println!("clock type: {:?}", self.clock_type);
+        });
+        if_pressed!(Key::F, {self.clock_type = ClockType::Frame});
+        if_pressed!(Key::N, {
+            let mut input = String::new();
+            stdout().flush().unwrap();
+            stdin().read_line(&mut input).unwrap();
+            match input.trim().parse::<u32>() {
+                Ok(num) => self.clock_type = ClockType::Amount(num),
+                Err(_) => self.clock_type = ClockType::Undefined,
+            }
+        });
+        if_pressed!(Key::R, {
+            self.ppu.borrow_mut().reset();
+            self.cpu.reset();
+        });
+        if_pressed!(Key::D, {self.cpu.debug = !self.cpu.debug});
+        if_pressed!(Key::E, {
+            let debug = self.ppu.borrow().debug;
+            self.ppu.borrow_mut().debug = !debug;
+        });
+        if_pressed!(Key::V, {
+            let mut input = String::new();
+            stdout().flush().unwrap();
+            stdin().read_line(&mut input).unwrap();
+            let parse_result = u16::from_str_radix(input.trim(), 16);
+            match parse_result {
+                Ok(idx) => self.print_memory_by_address(idx, 3),
+                Err(_)  => println!("index must be in hex format"),
+            }
+        });
+        if_pressed!(Key::S, {
+            let mut input = String::new();
+            stdout().flush().unwrap();
+            stdin().read_line(&mut input).unwrap();
+            let mut input_parts = input.split_whitespace();
+            let address = u16::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
+            let data = u8::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
+            self.bus.borrow_mut().write_cpu_ram(address, data);
+            println!("write: {:04X} {:02X}", address, data);
+        });
+        if_pressed!(Key::P, {
+            let mut input = String::new();
+            stdout().flush().unwrap();
+            stdin().read_line(&mut input).unwrap();
+            let address = match u16::from_str_radix(input.trim(), 16) {
+                Ok(value) => value,
+                Err(_) => 0,
+            };
+            self.cpu.set_programm_counter(address);
+        });
     }
 }
 
@@ -243,11 +203,12 @@ fn main() {
     let pixel_size = 3;
     let width = 522 * pixel_size;
     let height = 242 * pixel_size;
-    let (mut window, handler) = spriter::init("mayonnaise", width, height);
+    let (runner, mut window) = spriter::init("mayonnaise", width, height);
     let screen = Screen::new(&mut window, pixel_size);
 
     let cart = Cartridge::new("smb.nes");
     let mut device = Device::new(screen);
+    println!("device created");
     device.insert_cartridge(cart);
     
     for table in 0 .. 2 {
@@ -256,5 +217,46 @@ fn main() {
             device.screen.set_point_at_sprite_area(pixel, table);
         }
     }
-    handler.run(window, device);
+
+    runner.run(window, move |_duration| {
+        device.handle_keys();
+        let clock_type = device.clock_type;
+        let mut update_screen = false;
+        match clock_type {
+            ClockType::Manual => {
+                while !device.cpu.clock_complete {
+                    device.clock();
+                }
+                update_screen = true;
+                device.clock_type = ClockType::Undefined;
+            },
+            ClockType::Auto => {
+                while !update_screen {
+                    device.clock();
+                    update_screen = device.ppu.borrow().frame_complete;
+                }
+                std::thread::sleep(Duration::from_secs_f64(1.0/120.0)); // simple approach for a fiting framerate
+            },
+            ClockType::Frame => {
+                while !device.ppu.borrow().frame_complete {
+                    device.clock();
+                }
+                update_screen = true;
+                device.clock_type = ClockType::Undefined;
+            },
+            ClockType::Amount(num) => {
+                let current_clock = device.clock_counter;
+                while device.clock_counter < current_clock + num {
+                    device.clock();
+                }
+                update_screen = true;
+                device.clock_type = ClockType::Undefined;
+            },
+            ClockType::Undefined => (),
+        }
+        
+        device.ppu.borrow_mut().frame_complete = false;
+        device.cpu.clock_complete = false;
+        update_screen
+    });
 }

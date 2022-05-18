@@ -1,7 +1,7 @@
 [package]
 name = "mayonnaise"
 version = "0.1.0"
-authors = ["zaitsev.o"]
+authors = ["zvoleg <oleg.zaitsevv@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,4 +11,4 @@ name = "emu"
 path = "src/lib.rs"
 
 [dependencies]
-spriter = { git="https://gitlab.com/olegRus/spriter" }
+spriter = { git="https://github.com/zvoleg/spriter" }

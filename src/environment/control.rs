@@ -1,6 +1,4 @@
-extern crate spriter;
-
-use spriter::{Key, handler};
+use spriter::Key;
 
 pub struct Controller {
     register: u8,
@@ -15,19 +13,14 @@ impl Controller {
 
     pub fn update_register_by_input(&mut self) {
         let mut register = 0;
-        for key in handler::get_pressed_keys().iter() {
-            match key {
-                Key::Up => register |= 0x10,
-                Key::Down => register |= 0x20,
-                Key::Left => register |= 0x40,
-                Key::Right => register |= 0x80,
-                Key::Z => register |= 0x01,
-                Key::X => register |= 0x02,
-                Key::LControl => register |= 0x04,
-                Key::Space => register |= 0x08,
-                _ => ()
-            }
-        }
+        if_holded!(Key::Up, { register |= 0x10 });
+        if_holded!(Key::Down, { register |= 0x20 });
+        if_holded!(Key::Left, { register |= 0x40 });
+        if_holded!(Key::Right, { register |= 0x80 });
+        if_holded!(Key::Z, { register |= 0x01 });
+        if_holded!(Key::X, { register |= 0x02 });
+        if_holded!(Key::LControl, { register |= 0x04 });
+        if_holded!(Key::Space, { register |= 0x08 });
         self.register = register;
     }
 
