@@ -1,14 +1,21 @@
 use std::fs::File;
 use std::io::prelude::*;
 
+mod mapper;
+
+use mapper::Mapper;
+use mapper::mapper000::Mapper000;
+use mapper::mapper001::Mapper001;
+
 pub struct Cartridge {
     prg_rom: Vec<u8>,
     chr_rom: Vec<u8>,
-    _size_prg: usize,
-    _size_chr: usize,
     mirroring: u8,
     mapper: Box<dyn Mapper>,
 }
+
+const PRG_BLOCK_SIZE: usize = 16384;
+const CHR_BLOCK_SIZE: usize = 8192;
 
 impl Cartridge {
     pub fn new(file_name: &str) -> Cartridge {
@@ -16,9 +23,11 @@ impl Cartridge {
         let mut memory: Vec<u8> = Vec::new();
         file.read_to_end(&mut memory).unwrap();
 
-        let size_prg = memory[4] as usize;
-        let size_chr = memory[5] as usize;
-        println!("size_prg: {} | size_chr: {}", size_prg, size_chr);
+        let prg_amount = memory[4] as usize;
+        let chr_amount = memory[5] as usize;
+        let prg_size = prg_amount * PRG_BLOCK_SIZE;
+        let chr_size = chr_amount * CHR_BLOCK_SIZE;
+        println!("size_prg: {} | size_chr: {}", prg_amount, chr_amount);
         let mirroring = memory[6] & 0x01;
         let low = (memory[6] & 0xF0) >> 4;
         let high = memory[7] & 0xF0;
@@ -30,29 +39,28 @@ impl Cartridge {
             idx += 512;
         }
 
-        let mut prg_rom: Vec<u8> = vec![0; 16384 * size_prg];
-        let mut chr_rom: Vec<u8> = vec![0; 8192 * size_chr];
-        prg_rom.clone_from_slice(&memory[idx .. idx + (16384 * size_prg)]);
-        idx += (16384 * size_prg as u32) as usize;
-        chr_rom.clone_from_slice(&memory[idx .. idx + (8192 * size_chr)]);
-        let mapper = Cartridge::create_mapper(size_prg, size_chr, mapper_id);
+        let mut prg_rom: Vec<u8> = vec![0; prg_size];
+        let mut chr_rom: Vec<u8> = vec![0; chr_size];
+        prg_rom.clone_from_slice(&memory[idx .. idx + prg_size]);
+        idx += prg_size;
+        chr_rom.clone_from_slice(&memory[idx .. idx + chr_size]);
+        let mapper = Cartridge::create_mapper(prg_amount, chr_amount, mapper_id);
 
         Cartridge {
             prg_rom,
             chr_rom,
-            _size_prg: size_prg,
-            _size_chr: size_chr,
             mirroring,
             mapper
         }
     }
 
-    fn create_mapper(size_prg: usize, size_chr: usize, mapper_id: u8) -> Box<dyn Mapper> {
-        let mapper = match mapper_id {
-            000 => Mapper000 { size_prg, _size_chr: size_chr },
+    fn create_mapper(prg_amount: usize, chr_amount: usize, mapper_id: u8) -> Box<dyn Mapper> {
+        let mapper: Box<dyn Mapper> = match mapper_id {
+            000 => Box::new(Mapper000::new(prg_amount)),
+            001 => Box::new(Mapper001::new(prg_amount, chr_amount)),
             _   => panic!("unknown mapper: {}", mapper_id),
         };
-        Box::new(mapper)
+        mapper
     }
 
     pub fn get_mirroring(&self) -> u8 {
@@ -61,54 +69,23 @@ impl Cartridge {
 
     pub fn read_prg_rom(&self, address: u16, data: &mut u8) {
         let mut cartridge_addr = 0;
-        if self.mapper.prg_addr(address, &mut cartridge_addr) {
+        if self.mapper.prg_read_addr(address, &mut cartridge_addr) {
             *data = self.prg_rom[cartridge_addr];
-        }
-    }
-
-    pub fn write_to_prg_rom(&mut self, address: u16, data: u8) {
-        let mut cartridge_addr = 0;
-        if self.mapper.prg_addr(address, &mut cartridge_addr) {
-            self.prg_rom[cartridge_addr] = data;
         }
     }
 
     pub fn read_chr_rom(&self, address: u16, data: &mut u8) {
         let mut cartridge_addr = 0;
-        if self.mapper.chr_addr(address, &mut cartridge_addr) {
+        if self.mapper.chr_read_addr(address, &mut cartridge_addr) {
             *data = self.chr_rom[cartridge_addr];
         }
     }
-}
 
-trait Mapper {
-    fn prg_addr(&self, address: u16, cartridge_addr: &mut usize) -> bool;
-    fn chr_addr(&self, address: u16, cartridge_addr: &mut usize) -> bool;
-}
-
-struct Mapper000 {
-    size_prg: usize,
-    _size_chr: usize
-}
-
-impl Mapper for Mapper000 {
-    fn prg_addr(&self, address: u16, cartridge_addr: &mut usize) -> bool {
-        if address >= 0x8000 {
-            *cartridge_addr = match self.size_prg {
-            1 => address & 0x3FFF,
-            2 => address & 0x7FFF,
-            _ => panic!("wrong size of size_prg: {}", self.size_prg),
-            } as usize;
-            return true;
-        }
-        false
+    pub fn write_prg_rom(&mut self, address: u16, data: u8) {
+        self.mapper.prg_write_addr(address, data);
     }
 
-    fn chr_addr(&self, address: u16, cartridge_addr: &mut usize) -> bool {
-        if address < 0x2000 {
-            *cartridge_addr = address as usize;
-            return true;
-        }
-        false
+    pub fn write_chr_rom(&mut self, address: u16, data: u8) {
+        self.mapper.chr_write_addr(address, data);
     }
 }
