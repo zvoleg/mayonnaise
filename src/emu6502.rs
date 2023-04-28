@@ -115,8 +115,9 @@ impl Emu6502 {
             self.opcode = self.read_data(self.prog_counter);
             let op = &OPCODES[self.opcode as usize];
 
+            let mut log_message = String::new();
             if self.debug {
-                print!(
+                log_message = format!(
                     "a={:02X} x={:02X} y={:02X} st={:08b}({:02X}) pc={:04X} st_ptr={:02X}\t| opcode {:02X}: {} {} ",
                     self.acc, self.x, self.y, self.status, self.status, self.prog_counter, self.stack_ptr,
                     self.opcode, op.instruction_name, op.addressing_mode_name
@@ -131,11 +132,12 @@ impl Emu6502 {
                     && op.instruction_name != "BIT"
                     && op.instruction_name != "BRK"
                 {
-                    print!("{} ", self.addr_offset as i16);
+                    log_message = log_message + &format!("{} ", self.addr_offset as i16);
                 } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
-                    println!("");
+                    info!("{}", log_message);
                 } else {
-                    println!("{:04X} = {:02X}", self.address, self.bus.borrow().read_only_data(self.address));
+                    log_message = log_message + &format!("{:04X} = {:02X}", self.address, self.bus.borrow().read_only_data(self.address));
+                    info!("{}", log_message);
                 }
             }
 
@@ -181,7 +183,7 @@ impl Emu6502 {
         self.prog_counter = ((new_high as u16) << 8) | new_low as u16;
         self.cycle_counter = 8;
         if self.debug {
-            println!("cpu: nmi executing, new prog_counter: {:04X}", self.prog_counter);
+            info!("cpu: nmi executing, new prog_counter: {:04X}", self.prog_counter);
         }
     }
 
@@ -241,7 +243,7 @@ impl Emu6502 {
 
     fn branching_instruction(&mut self) {
         if self.debug {
-            print!("branching operation processed");
+            info!("branching operation processed");
         }
         self.cycle_counter += 1;
         let new_prog_counter = self.prog_counter.wrapping_add(self.addr_offset);
@@ -452,17 +454,11 @@ impl Emu6502 {
         if self.get_flag(Flag::S) == 1 {
             self.branching_instruction();
         }
-        if self.debug {
-            println!("");
-        }
     }
 
     fn BPL(&mut self) { // branch if plus
         if self.get_flag(Flag::S) == 0 {
             self.branching_instruction();
-        }
-        if self.debug {
-            println!("");
         }
     }
 
@@ -470,17 +466,11 @@ impl Emu6502 {
         if self.get_flag(Flag::C) == 0 {
             self.branching_instruction();
         }
-        if self.debug {
-            println!("");
-        }
     }
 
     fn BCS(&mut self) { // branch if carry set
         if self.get_flag(Flag::C) == 1 {
             self.branching_instruction();
-        }
-        if self.debug {
-            println!("");
         }
     }
 
@@ -488,17 +478,11 @@ impl Emu6502 {
         if self.get_flag(Flag::Z) == 1 {
             self.branching_instruction();
         }
-        if self.debug {
-            println!("");
-        }
     }
 
     fn BNE(&mut self) { // branch if not zero
         if self.get_flag(Flag::Z) == 0 {
             self.branching_instruction();
-        }
-        if self.debug {
-            println!("");
         }
     }
 
@@ -506,17 +490,11 @@ impl Emu6502 {
         if self.get_flag(Flag::V) == 1 {
             self.branching_instruction();
         }
-        if self.debug {
-            println!("");
-        }
     }
 
     fn BVC(&mut self) { // branch if overflow reset
         if self.get_flag(Flag::V) == 0 {
             self.branching_instruction();
-        }
-        if self.debug {
-            println!("");
         }
     }
 
@@ -763,6 +741,6 @@ impl Emu6502 {
     fn NOP(&mut self) {}
 
     fn XEP(&mut self) {
-        eprintln!("undefinded opcode: {:02X}", self.opcode);
+        info!("undefinded opcode: {:02X}", self.opcode);
     }
 }

@@ -40,7 +40,7 @@ impl Bus {
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
         self.cartridge = Some(cartridge);
-        println!("cartridge insert");
+        info!("cartridge insert");
     }
 
     pub fn read_only_data(&self, address: u16) -> u8 {
@@ -94,7 +94,7 @@ impl Bus {
         } else if address == 0x4016 {
             self.controller_a.update_register_by_input();
         } else if address >= 0x4020 {
-            println!("cpu: try write to cartridge {:04X} -> {:02X}", address, data);
+            info!("cpu: try write to cartridge {:04X} -> {:02X}", address, data);
             self.cartridge.as_ref().unwrap().borrow_mut().
                 write_prg_rom(address, data);
         }

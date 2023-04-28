@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate spriter;
+#[macro_use]
+extern crate log;
+extern crate env_logger;
 
-use std::time::Instant;
 use spriter::Key;
 
 use std::rc::Rc;
@@ -54,12 +56,11 @@ impl Device {
         let min = address.saturating_sub(offset);
         let max = address.saturating_add(offset + 1);
         for i in min..max {
+            let mut pointer_sign = "   ";
             if i == address {
-                print!(" > ");
-            } else {
-                print!("   ");
+                pointer_sign = " > ";
             }
-            println!("{:04X} - {:02X}", i, self.bus.borrow().read_only_data(i));
+            info!("{}{:04X} - {:02X}", pointer_sign, i, self.bus.borrow().read_only_data(i));
         }
     }
 
@@ -136,7 +137,7 @@ impl Device {
                 ClockType::Auto => ClockType::Undefined,
                 _ => ClockType::Auto,
             };
-            println!("clock type: {:?}", self.clock_type);
+            info!("clock type: {:?}", self.clock_type);
         });
         if_pressed!(Key::F, {self.clock_type = ClockType::Frame});
         if_pressed!(Key::N, {
@@ -164,7 +165,7 @@ impl Device {
             let parse_result = u16::from_str_radix(input.trim(), 16);
             match parse_result {
                 Ok(idx) => self.print_memory_by_address(idx, 3),
-                Err(_)  => println!("index must be in hex format"),
+                Err(_)  => info!("index must be in hex format"),
             }
         });
         if_pressed!(Key::S, {
@@ -175,7 +176,7 @@ impl Device {
             let address = u16::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
             let data = u8::from_str_radix(input_parts.next().unwrap().trim(), 16).unwrap();
             self.bus.borrow_mut().write_cpu_ram(address, data);
-            println!("write: {:04X} {:02X}", address, data);
+            info!("write: {:04X} {:02X}", address, data);
         });
         if_pressed!(Key::P, {
             let mut input = String::new();
@@ -200,15 +201,17 @@ enum ClockType {
 }
 
 fn main() {
+    env_logger::init();
+
     let pixel_size = 3;
     let width = 522 * pixel_size;
     let height = 242 * pixel_size;
     let (runner, mut window) = spriter::init("mayonnaise", width, height);
     let screen = Screen::new(&mut window, pixel_size);
 
-    let cart = Cartridge::new("smb.nes");
+    let cart = Cartridge::new("af.nes");
     let mut device = Device::new(screen);
-    println!("device created");
+    info!("device created");
     device.insert_cartridge(cart);
     
     for table in 0 .. 2 {

@@ -1,12 +1,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::program::Cartridge;
-
-enum Mirroring {
-    HORISONTAL,
-    VERTICAL,
-    UNDEFINED,
-}
+use crate::program::{Cartridge, Mirroring};
 
 struct Control {
     data: u8,
@@ -504,7 +498,7 @@ impl<'a> Ppu {
                     self.nmi_require = true;
                 }
                 if self.debug {
-                    println!("ppu: update CONTROL register: {:02X} | nmi: {} | sprite size: {} | background pattern tabele: {} | sprite pattern table: {} | vram increment: {} | base nametable address: {}",
+                    info!("ppu: update CONTROL register: {:02X} | nmi: {} | sprite size: {} | background pattern tabele: {} | sprite pattern table: {} | vram increment: {} | base nametable address: {}",
                         self.control.data,
                         (self.control.data >> 7) & 0x01,
                         (self.control.data >> 5) & 0x01,
@@ -518,7 +512,7 @@ impl<'a> Ppu {
             0x0001 => {
                 self.mask.data = data;
                 if self.debug{
-                    println!("ppu: update MASK register: {:02X} ({:08b})", self.mask.data, self.mask.data);
+                    info!("ppu: update MASK register: {:02X} ({:08b})", self.mask.data, self.mask.data);
                 }
             },
             0x0002 => (),
@@ -538,7 +532,7 @@ impl<'a> Ppu {
                     self.latch = !self.latch;
                 }
                 if self.debug{
-                    println!("ppu: (scroll) update tmp addr register: {:02X} ({:08b})", self.tmp_addr.data, self.tmp_addr.data);
+                    info!("ppu: (scroll) update tmp addr register: {:02X} ({:08b})", self.tmp_addr.data, self.tmp_addr.data);
                 }
             },
             0x0006 => {
@@ -551,8 +545,8 @@ impl<'a> Ppu {
                     self.latch = !self.latch;
                 }
                 if self.debug{
-                    println!("ppu: (scroll) update tmp addr register: {:02X} ({:08b})", self.tmp_addr.data, self.tmp_addr.data);
-                    println!("ppu: (scroll) update cur addr register: {:02X} ({:08b})", self.cur_addr.data, self.cur_addr.data);
+                    info!("ppu: (scroll) update tmp addr register: {:02X} ({:08b})", self.tmp_addr.data, self.tmp_addr.data);
+                    info!("ppu: (scroll) update cur addr register: {:02X} ({:08b})", self.cur_addr.data, self.cur_addr.data);
                 }
             },
             0x0007 => {
@@ -617,7 +611,7 @@ impl<'a> Ppu {
     pub fn write_ppu(&mut self, address: u16, data: u8) {
         let address = address & 0x3FFF;
         if address < 0x2000 {
-            println!("try to write into pattern tabel by address: {:04X} data: {:02X}", address, data);
+            info!("try to write into pattern tabel by address: {:04X} data: {:02X}", address, data);
         } else if address >= 0x2000 && address < 0x3F00 {
             let address = (address & 0x0FFF) as usize;
             match self.mirroring {
@@ -707,12 +701,13 @@ impl<'a> Ppu {
 
     pub fn read_name_table(&self, name_table: usize) {
         for row in 0 .. 32 {
+            let mut name_table_str = String::new();
             for column in 0 .. 32 {
                 let offset = row * 32 + column;
                 let value = self.name_table[name_table][offset];
-                print!("{:02X} ", value);
+                name_table_str = name_table_str + &format!("{:02X} ", value);
             }
-            println!("");
+            info!("{}", name_table_str);
         }
     }
 
@@ -844,7 +839,7 @@ impl<'a> Ppu {
 
     pub fn clock(&mut self) -> Option<u32> {
         if self.debug {
-            println!(
+            info!(
                 "ppu: coarse_x: {:02} | coarse y: {:02} | fine x: {:02} | fine y: {:02} | name_tabel: {:02} | full register: {:015b} ({:04X}) | tmp register: {:015b} ({:04X})",
                 self.cur_addr.data & 0x1F,
                 (self.cur_addr.data >> 5) & 0x1F,
@@ -991,7 +986,7 @@ impl<'a> Ppu {
                 self.nmi_require = true;
             }
             if self.debug {
-            println!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
+            info!("ppu: start vblank\t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
                 self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
             }
         }
@@ -1006,7 +1001,7 @@ impl<'a> Ppu {
             self.sprite_priority_shift_register = [0; 8];
             self.vblank = false;
             if self.debug {
-                println!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
+                info!("ppu: end vblank \t| status: {:02X} | control: {:02X} | mask: {:02X} | tmp_addr: {:04X} | cur_addr: {:04X}",
                     self.status.data, self.control.data, self.mask.data, self.tmp_addr.data, self.cur_addr.data);
             }
         }

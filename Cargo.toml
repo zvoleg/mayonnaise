@@ -12,3 +12,5 @@ path = "src/lib.rs"
 
 [dependencies]
 spriter = { git="https://github.com/zvoleg/spriter" }
+log = "0.4.17"
+env_logger = "0.10.0"

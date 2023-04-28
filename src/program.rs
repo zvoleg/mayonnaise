@@ -7,15 +7,21 @@ use mapper::Mapper;
 use mapper::mapper000::Mapper000;
 use mapper::mapper001::Mapper001;
 
+const PRG_BLOCK_SIZE: usize = 16384;
+const CHR_BLOCK_SIZE: usize = 8192;
+
+pub enum Mirroring {
+    HORISONTAL,
+    VERTICAL,
+    UNDEFINED,
+}
+
 pub struct Cartridge {
     prg_rom: Vec<u8>,
     chr_rom: Vec<u8>,
     mirroring: u8,
     mapper: Box<dyn Mapper>,
 }
-
-const PRG_BLOCK_SIZE: usize = 16384;
-const CHR_BLOCK_SIZE: usize = 8192;
 
 impl Cartridge {
     pub fn new(file_name: &str) -> Cartridge {
@@ -27,7 +33,7 @@ impl Cartridge {
         let chr_amount = memory[5] as usize;
         let prg_size = prg_amount * PRG_BLOCK_SIZE;
         let chr_size = chr_amount * CHR_BLOCK_SIZE;
-        println!("size_prg: {} | size_chr: {}", prg_amount, chr_amount);
+        info!("size_prg: {} | size_chr: {}", prg_amount, chr_amount);
         let mirroring = memory[6] & 0x01;
         let low = (memory[6] & 0xF0) >> 4;
         let high = memory[7] & 0xF0;

@@ -23,7 +23,7 @@ impl Mapper for Mapper000 {
         false
     }
 
-    fn prg_write_addr(&self, address: u16, data: u8) {
+    fn prg_write_addr(&mut self, address: u16, data: u8) {
         
     }
 
@@ -35,7 +35,7 @@ impl Mapper for Mapper000 {
         false
     }
 
-    fn chr_write_addr(&self, address: u16, data: u8) {
+    fn chr_write_addr(&mut self, address: u16, data: u8) {
         
     }
 }
