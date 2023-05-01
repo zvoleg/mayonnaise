@@ -48,8 +48,6 @@ impl Device {
         self.bus.borrow_mut().insert_cartridge(cartridge.clone());
         self.ppu.borrow_mut().insert_cartridge(cartridge.clone());
         self.cpu.reset();
-        self.ppu.borrow_mut().read_all_sprites(0);
-        self.ppu.borrow_mut().read_all_sprites(1);
     }
 
     fn print_memory_by_address(&self, address: u16, offset: u16) {
@@ -256,6 +254,14 @@ fn main() {
                 device.clock_type = ClockType::Undefined;
             },
             ClockType::Undefined => (),
+        }
+        device.ppu.borrow_mut().read_all_sprites(0);
+        device.ppu.borrow_mut().read_all_sprites(1);
+        for table in 0 .. 2 {
+            for idx in 0 .. 128 * 128 {
+                let pixel = device.read_pixel_pattern_table(idx, table);
+                device.screen.set_point_at_sprite_area(pixel, table);
+            }
         }
         
         device.ppu.borrow_mut().frame_complete = false;

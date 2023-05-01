@@ -8,7 +8,7 @@ __Implemented:__
 - CPU
 - PPU (not all functionality)
 - Controll
-- One mapper for cartridges (000)
+- Two mapper for cartridges (000, 001)
 
 __Not implemented:__
 - APU

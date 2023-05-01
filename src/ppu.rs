@@ -290,7 +290,6 @@ pub struct Ppu {
     oam_buffer: [Oam; 8],
 
     cartridge: Option<Rc<RefCell<Cartridge>>>,
-    mirroring: Mirroring,
 
     skanline: u16,
     cycle:    u16,
@@ -358,7 +357,6 @@ impl<'a> Ppu {
             oam_buffer: [Oam::new(); 8],
 
             cartridge: None,
-            mirroring: Mirroring::UNDEFINED,
 
             skanline:          0,
             cycle:             0,
@@ -405,11 +403,6 @@ impl<'a> Ppu {
     }
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cartridge>>) {
-        self.mirroring = match cartridge.borrow().get_mirroring() {
-            0 => Mirroring::HORISONTAL,
-            1 => Mirroring::VERTICAL,
-            _ => Mirroring::UNDEFINED,
-        };
         self.cartridge = Some(cartridge);
     }
 
@@ -565,7 +558,8 @@ impl<'a> Ppu {
             data = self.read_from_cartridge(address);
         } else if address >= 0x2000 && address < 0x3F00 {
             let address = (address & 0x0FFF) as usize;
-            match self.mirroring {
+            let mirroring = self.cartridge.as_ref().unwrap().borrow().get_mirroring();
+            match mirroring {
                 Mirroring::HORISONTAL => {
                     if address < 0x400 {
                         data = self.name_table[0][address];
@@ -611,10 +605,11 @@ impl<'a> Ppu {
     pub fn write_ppu(&mut self, address: u16, data: u8) {
         let address = address & 0x3FFF;
         if address < 0x2000 {
-            info!("try to write into pattern tabel by address: {:04X} data: {:02X}", address, data);
+            self.cartridge.as_mut().unwrap().as_ref().borrow_mut().write_chr_rom(address, data);
         } else if address >= 0x2000 && address < 0x3F00 {
             let address = (address & 0x0FFF) as usize;
-            match self.mirroring {
+            let mirroring = self.cartridge.as_ref().unwrap().borrow().get_mirroring();
+            match mirroring {
                 Mirroring::HORISONTAL => {
                     if address < 0x400 {
                         self.name_table[0][address] = data;

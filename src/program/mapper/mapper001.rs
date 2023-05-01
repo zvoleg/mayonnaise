@@ -80,6 +80,9 @@ impl Mapper for Mapper001 {
     }
 
     fn prg_write_addr(&mut self, address: u16, data: u8) {
+        if address < 0x8000 {
+            return;
+        }
         self.prg_wrt_counter += 1;
         if address >= 0x8000 {
             if data & 0x80 != 0 {
@@ -133,6 +136,7 @@ impl Mapper for Mapper001 {
                     CHR_MODE::K8 => self.chr_bank_1,
                 };
             } else if reg_selector >= 0xE000 { // prg bank
+                info!("{:04X}", self.shift_reg);
                 match self.prg_bank_mode {
                     PRG_MODE::FIX_FIRST_16 => {
                         self.high_bank_offset = PRG_BLOCK_SIZE * (self.shift_reg & 0xFF) as usize;
@@ -164,5 +168,9 @@ impl Mapper for Mapper001 {
 
     fn chr_write_addr(&mut self, address: u16, data: u8) {
         
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
     }
 }

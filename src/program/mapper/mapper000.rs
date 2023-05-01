@@ -1,12 +1,20 @@
+use crate::program::Mirroring;
+
 use super::Mapper;
 
 pub struct Mapper000 {
     prg_amount: usize,
+    mirroring: Mirroring,
 }
 
 impl Mapper000 {
-    pub fn new(prg_amount: usize) -> Self {
-        Mapper000 { prg_amount: prg_amount }
+    pub fn new(prg_amount: usize, mirroring_bit: u8) -> Self {
+        let mirroring = match mirroring_bit {
+            0 => Mirroring::HORISONTAL,
+            1 => Mirroring::VERTICAL,
+            _ => Mirroring::UNDEFINED,
+        };
+        Mapper000 { prg_amount: prg_amount, mirroring: mirroring }
     }
 }
 
@@ -37,5 +45,9 @@ impl Mapper for Mapper000 {
 
     fn chr_write_addr(&mut self, _address: u16, _data: u8) {
         
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
     }
 }
