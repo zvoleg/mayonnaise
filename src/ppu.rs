@@ -705,7 +705,7 @@ impl<'a> Ppu {
             for column in 0 .. 32 {
                 let offset = row * 32 + column;
                 let value = self.name_table[name_table][offset];
-                name_table_str = name_table_str + &format!("{:02X} ", value);
+                name_table_str.push_str(&format!("{:02X} ", value));
             }
             info!("{}", name_table_str);
         }

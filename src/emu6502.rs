@@ -132,13 +132,11 @@ impl Emu6502 {
                     && op.instruction_name != "BIT"
                     && op.instruction_name != "BRK"
                 {
-                    log_message = log_message + &format!("{} ", self.addr_offset as i16);
-                } else if op.addressing_mode_name == "ACC" || op.addressing_mode_name == "IMP" {
-                    info!("{}", log_message);
-                } else {
-                    log_message = log_message + &format!("{:04X} = {:02X}", self.address, self.bus.borrow().read_only_data(self.address));
-                    info!("{}", log_message);
+                    log_message.push_str(&format!("{} ", self.addr_offset as i16));
+                } else if op.addressing_mode_name != "ACC" && op.addressing_mode_name != "IMP" {
+                    log_message.push_str(&format!("{:04X} = {:02X}", self.address, self.bus.borrow().read_only_data(self.address)));
                 }
+                info!("{}", log_message);
             }
 
             (op.instruction)(self);
@@ -741,6 +739,6 @@ impl Emu6502 {
     fn NOP(&mut self) {}
 
     fn XEP(&mut self) {
-        info!("undefinded opcode: {:02X}", self.opcode);
+        error!("undefinded opcode: {:02X}", self.opcode);
     }
 }
